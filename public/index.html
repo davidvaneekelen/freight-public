@@ -1,0 +1,635 @@
+<!--
+  F.R.E.I.G.H.T. Website
+  ------------------------------------------
+  Author    : F.R.E.I.G.H.T. (Fleet Resource Expeditors In Galactic Hauling & Transport)
+  Website   : https://freight.associates
+  Purpose   : Landing Page
+  License   : CC BY 4.0 (Attribution)
+
+  You are free to share, use, and adapt this code for any purpose - including commercial use -
+  as long as you provide clear attribution to the F.R.E.I.G.H.T. initiative (https://freight.associates).
+-->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>F.R.E.I.G.H.T. - The Backbone of Galactic Expansion</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            color: #f5e6a3;
+            overflow-x: hidden;
+        }
+
+        .parallax-container {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 400vh; /* Much taller to cover all content */
+            background: linear-gradient(180deg, #1a1f3a 0%, #2c3e50 50%, #1a1f3a 100%);
+            z-index: -1;
+            overflow: hidden;
+        }
+
+        .star-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+        }
+
+        .star {
+            position: absolute;
+            background: #f5e6a3;
+            border-radius: 50%;
+            animation: twinkle 3s ease-in-out infinite alternate;
+        }
+
+        @keyframes twinkle {
+            0% { opacity: 0.3; transform: scale(1); }
+            100% { opacity: 1; transform: scale(1.2); }
+        }
+
+        .content {
+            position: relative;
+            z-index: 1;
+            min-height: 100vh;
+        }
+
+        .section {
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 2rem;
+            position: relative;
+        }
+
+        .glass-panel {
+            background: rgba(42, 62, 80, 0.85);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(245, 230, 163, 0.1);
+            border-radius: 20px;
+            padding: 3rem;
+            max-width: 1000px;
+            width: 100%;
+            box-shadow: 0 25px 50px rgba(0, 0, 0, 0.5);
+            text-align: center;
+        }
+
+        .hero-section .glass-panel {
+            max-width: 1200px;
+        }
+
+        .logo {
+            font-size: clamp(3rem, 8vw, 6rem);
+            font-weight: 900;
+            color: #f5e6a3;
+            margin-bottom: 1rem;
+            letter-spacing: 0.2em;
+            text-shadow: 0 0 30px rgba(245, 230, 163, 0.3);
+        }
+
+        .tagline {
+            font-size: clamp(1.2rem, 3vw, 1.8rem);
+            color: rgba(245, 230, 163, 0.8);
+            margin-bottom: 2rem;
+            font-weight: 300;
+        }
+
+        .section-title {
+            font-size: clamp(2rem, 5vw, 3rem);
+            color: #f5e6a3;
+            margin-bottom: 2rem;
+            font-weight: 700;
+        }
+
+        .section-subtitle {
+            font-size: clamp(1.5rem, 4vw, 2rem);
+            color: #f5e6a3;
+            margin-bottom: 1.5rem;
+            font-weight: 600;
+        }
+
+        .section-text {
+            font-size: clamp(1rem, 2.5vw, 1.3rem);
+            line-height: 1.8;
+            margin-bottom: 2rem;
+            color: rgba(245, 230, 163, 0.9);
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 2rem;
+            margin: 2rem 0;
+        }
+
+        .stat-item {
+            padding: 1.5rem;
+            background: rgba(245, 230, 163, 0.1);
+            border-radius: 15px;
+            border: 1px solid rgba(245, 230, 163, 0.2);
+        }
+
+        .stat-number {
+            font-size: 2.5rem;
+            font-weight: 900;
+            color: #f5e6a3;
+            display: block;
+        }
+
+        .stat-label {
+            font-size: 1rem;
+            color: rgba(245, 230, 163, 0.7);
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+        }
+
+        .cta-button {
+            display: inline-block;
+            padding: 1rem 2.5rem;
+            background: linear-gradient(135deg, #f5e6a3, #d4c49a);
+            color: #2a3e50;
+            text-decoration: none;
+            border-radius: 50px;
+            font-weight: 700;
+            font-size: 1.2rem;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            transition: all 0.3s ease;
+            box-shadow: 0 10px 30px rgba(245, 230, 163, 0.3);
+            margin: 1rem;
+        }
+
+        .cta-button:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 15px 40px rgba(245, 230, 163, 0.4);
+            background: linear-gradient(135deg, #ffffff, #f5e6a3);
+        }
+
+        .cta-button.secondary {
+            background: rgba(245, 230, 163, 0.1);
+            color: #f5e6a3;
+            border: 2px solid #f5e6a3;
+        }
+
+        .cta-button.secondary:hover {
+            background: #f5e6a3;
+            color: #2a3e50;
+        }
+
+        .features-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 2rem;
+            margin: 2rem 0;
+            text-align: left;
+        }
+
+        .feature-item {
+            padding: 2rem;
+            background: rgba(244, 228, 188, 0.05);
+            border-radius: 15px;
+            border-left: 4px solid #f4e4bc;
+        }
+
+        .feature-title {
+            font-size: 1.3rem;
+            color: #f4e4bc;
+            margin-bottom: 1rem;
+            font-weight: 600;
+        }
+
+        .navbar {
+            position: fixed;
+            top: 0;
+            width: 100%;
+            background: rgba(44, 62, 80, 0.95);
+            backdrop-filter: blur(10px);
+            z-index: 1000;
+            padding: 1rem 2rem;
+            transition: all 0.3s ease;
+        }
+
+        .navbar.hidden {
+            transform: translateY(-100%);
+        }
+
+        .nav-content {
+            max-width: 1200px;
+            margin: 0 auto;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .nav-logo {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: #f4e4bc;
+            letter-spacing: 0.1em;
+        }
+
+        .nav-links {
+            display: flex;
+            gap: 2rem;
+            list-style: none;
+        }
+
+        .nav-links a {
+            color: rgba(244, 228, 188, 0.8);
+            text-decoration: none;
+            transition: color 0.3s ease;
+            font-weight: 500;
+        }
+
+        .nav-links a:hover {
+            color: #f4e4bc;
+        }
+
+        @media (max-width: 768px) {
+            .nav-links {
+                display: none;
+            }
+            
+            .glass-panel {
+                padding: 2rem;
+            }
+            
+            .features-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .parallax-image-section {
+            height: 100vh;
+            position: relative;
+            overflow: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-top: 1px solid rgba(245, 230, 163, 0.1);
+            border-bottom: 1px solid rgba(245, 230, 163, 0.1);
+        }
+
+        .parallax-image-bg {
+            position: absolute;
+            top: -20%;
+            left: -10%;
+            width: 120%;
+            height: 140%;
+            background-image: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1920 1080"><rect fill="%23000814" width="1920" height="1080"/><text x="960" y="540" text-anchor="middle" fill="%23f4e4bc" font-size="48" opacity="0.3">Elite Dangerous Station Image</text><text x="960" y="600" text-anchor="middle" fill="%23f4e4bc" font-size="24" opacity="0.5">Replace this placeholder with your station screenshot</text></svg>');
+            background-size: cover;
+            background-position: center;
+            background-attachment: fixed;
+            filter: brightness(0.9);
+        }
+
+        .parallax-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(45deg, rgba(44, 62, 80, 0.2), rgba(0, 8, 20, 0.15));
+            backdrop-filter: blur(0.5px);
+        }
+
+        .parallax-overlay::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: 
+                linear-gradient(90deg, transparent 0%, rgba(244, 228, 188, 0.03) 50%, transparent 100%),
+                linear-gradient(0deg, transparent 0%, rgba(244, 228, 188, 0.03) 50%, transparent 100%);
+            pointer-events: none;
+        }
+
+        .parallax-content {
+            position: relative;
+            z-index: 2;
+            text-align: center;
+            color: #f4e4bc;
+            max-width: 800px;
+            padding: 2rem;
+        }
+
+        .parallax-title {
+            font-size: clamp(2.5rem, 6vw, 4rem);
+            font-weight: 900;
+            margin-bottom: 1rem;
+            text-shadow: 2px 2px 10px rgba(0, 0, 0, 0.9), 0 0 20px rgba(44, 62, 80, 0.8);
+        }
+
+        .parallax-subtitle {
+            font-size: clamp(1.2rem, 3vw, 1.8rem);
+            opacity: 0.95;
+            text-shadow: 1px 1px 5px rgba(0, 0, 0, 0.9), 0 0 15px rgba(44, 62, 80, 0.7);
+        }
+
+        .scroll-indicator {
+            position: absolute;
+            bottom: 2rem;
+            left: 50%;
+            transform: translateX(-50%);
+            color: rgba(244, 228, 188, 0.6);
+            animation: bounce 2s infinite;
+        }
+
+        @keyframes bounce {
+            0%, 20%, 50%, 80%, 100% {
+                transform: translateX(-50%) translateY(0);
+            }
+            40% {
+                transform: translateX(-50%) translateY(-10px);
+            }
+            60% {
+                transform: translateX(-50%) translateY(-5px);
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="parallax-container" id="parallax-bg"></div>
+    
+    <nav class="navbar" id="navbar">
+        <div class="nav-content">
+            <div class="nav-logo">F.R.E.I.G.H.T.</div>
+            <ul class="nav-links">
+                <li><a href="#home">Home</a></li>
+                <li><a href="#services">Services</a></li>
+                <li><a href="#haulers">For Haulers</a></li>
+                <li><a href="#join">Join Us</a></li>
+            </ul>
+        </div>
+    </nav>
+
+    <div class="content">
+        <!-- Hero Section -->
+        <section class="section hero-section" id="home">
+            <div class="glass-panel">
+                <h1 class="logo">F.R.E.I.G.H.T.</h1>
+                <p class="tagline">The Backbone of Galactic Expansion</p>
+                <p class="section-text">Professional logistics and colonization services across the galaxy. We handle the heavy lifting so you can focus on what matters the most: the fun.</p>
+                <a href="https://discord.gg/freight" class="cta-button">Join Our Discord</a>
+                <a href="#services" class="cta-button secondary">Learn More</a>
+            </div>
+            <div class="scroll-indicator">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M12 2l-8 8h16l-8-8zm0 20l8-8H4l8 8z"/>
+                </svg>
+            </div>
+        </section>
+
+        <!-- Services Section -->
+        <section class="section" id="services">
+            <div class="glass-panel">
+                <h2 class="section-title">Logistics & Colonisation</h2>
+                <p class="section-text">We focus primarily on no-fuss, hands-off colonization contracting. For just a deposit, we will take care of sourcing, transporting, and delivering goods to your colonization projects.</p>
+                
+                <div class="features-grid">
+                    <div class="feature-item">
+                        <h3 class="feature-title">Turnkey Solutions</h3>
+                        <p>Complete end-to-end logistics management for your colonization projects. We handle everything from sourcing to final delivery.</p>
+                    </div>
+                    <div class="feature-item">
+                        <h3 class="feature-title">Minimal Hassle</h3>
+                        <p>Just provide a deposit and let our experienced fleet commanders handle the complex logistics. No micromanagement required.</p>
+                    </div>
+                    <div class="feature-item">
+                        <h3 class="feature-title">Galactic Reach</h3>
+                        <p>Our network spans across inhabited space, ensuring reliable delivery to even the most remote frontier systems.</p>
+                    </div>
+                </div>
+                
+                <a href="https://discord.gg/freight" class="cta-button">Get Started Today</a>
+            </div>
+        </section>
+
+        <!-- Parallax Image Section -->
+        <section class="parallax-image-section" id="station-parallax">
+            <div class="parallax-image-bg" id="station-bg"></div>
+            <div class="parallax-overlay"></div>
+            <div class="parallax-content">
+                <h2 class="parallax-title">Elite Operations</h2>
+                <p class="parallax-subtitle">Professional logistics across the galaxy's most advanced stations</p>
+            </div>
+        </section>
+
+        <!-- Haulers Section -->
+        <section class="section" id="haulers">
+            <div class="glass-panel">
+                <h2 class="section-title">For Aspiring Haulers</h2>
+                <p class="section-text">We also help haulers get started on their journey to fleet carrier ownership. Join our structured program and learn from experienced logistics professionals.</p>
+                
+                <div class="stats-grid">
+                    <div class="stat-item">
+                        <span class="stat-number">160</span>
+                        <span class="stat-label">Loads to Fleet Carrier</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-number">0</span>
+                        <span class="stat-label">Starting Capital Required</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-number">24/7</span>
+                        <span class="stat-label">Community Support</span>
+                    </div>
+                </div>
+                
+                <h3 class="section-subtitle">Your Path to Success</h3>
+                <p class="section-text">It takes approximately 160 loads hauled with F.R.E.I.G.H.T. to earn your fleet carrier from zero capital. Our experienced commanders provide mentorship, optimal trade routes, and a supportive community to help you achieve your goals efficiently.</p>
+                
+                <a href="https://discord.gg/freight" class="cta-button">Start Your Journey</a>
+            </div>
+        </section>
+
+        <!-- Join Section -->
+        <section class="section" id="join">
+            <div class="glass-panel">
+                <h2 class="section-title">Join the Union</h2>
+                <p class="section-text">Ready to see what the fuss is all about? Connect with our community of professional haulers, seasoned commanders, and logistics experts. Whether you're starting your first delivery or managing complex colonization contracts, F.R.E.I.G.H.T. has a place for you.</p>
+                
+                <div class="features-grid">
+                    <div class="feature-item">
+                        <h3 class="feature-title">Active Community</h3>
+                        <p>Join commanders from around the galaxy in our Discord server. Share experiences, get advice, and coordinate operations.</p>
+                    </div>
+                    <div class="feature-item">
+                        <h3 class="feature-title">Professional Support</h3>
+                        <p>Access to experienced fleet coordinators and logistics specialists who can help optimize your operations.</p>
+                    </div>
+                    <div class="feature-item">
+                        <h3 class="feature-title">Growth Opportunities</h3>
+                        <p>From new hauler to fleet carrier owner - we provide the structure and support for your advancement.</p>
+                    </div>
+                </div>
+                
+                <a href="https://discord.gg/freight" class="cta-button">Join Discord Now</a>
+                <p style="margin-top: 1rem; opacity: 0.7;">discord.gg/freight</p>
+            </div>
+        </section>
+    </div>
+
+    <script>
+        // Parallax scrolling effect with layered depth
+        window.addEventListener('scroll', () => {
+            const scrolled = window.pageYOffset;
+            const parallax = document.getElementById('parallax-bg');
+            const starLayers = parallax.querySelectorAll('.star-layer');
+            const stationBg = document.getElementById('station-bg');
+            const stationSection = document.getElementById('station-parallax');
+            
+            // Move the main background
+            const rate = scrolled * -0.33;
+            parallax.style.transform = `translateY(${rate}px)`;
+            
+            // Move star layers at different speeds for depth effect
+            starLayers.forEach((layer, index) => {
+                const layerRate = scrolled * (-0.2 - index * 0.05);
+                layer.style.transform = `translateY(${layerRate}px)`;
+            });
+            
+            // Station parallax effect (bounded scanning window)
+            if (stationBg && stationSection) {
+                const sectionRect = stationSection.getBoundingClientRect();
+                const windowHeight = window.innerHeight;
+                
+                // Check if section is in view
+                if (sectionRect.top < windowHeight && sectionRect.bottom > 0) {
+                    // Calculate how much of the section is visible
+                    const sectionTop = sectionRect.top;
+                    const sectionHeight = sectionRect.height;
+                    
+                    // Calculate progress through the section (0 to 1)
+                    const progress = Math.max(0, Math.min(1, (windowHeight - sectionTop) / (windowHeight + sectionHeight)));
+                    
+                    // The image is 140% height with -20% top offset, so we have 20% extra space to move
+                    // Map progress to movement range: 0% to 20% of section height
+                    const maxMovement = sectionHeight * 0.2;
+                    const movement = progress * maxMovement;
+                    
+                    stationBg.style.transform = `translateY(${movement}px)`;
+                } else if (sectionRect.top >= windowHeight) {
+                    // Section is below viewport - reset to start position
+                    stationBg.style.transform = `translateY(0px)`;
+                } else {
+                    // Section is above viewport - keep at max position
+                    const maxMovement = stationSection.offsetHeight * 0.2;
+                    stationBg.style.transform = `translateY(${maxMovement}px)`;
+                }
+            }
+        });
+
+        // Function to add your Elite Dangerous station image
+        function loadStationImage() {
+            const stationBg = document.getElementById('station-bg');
+            
+            // Your Elite Dangerous station image
+            const eliteStationImage = 'https://media.discordapp.net/attachments/1360417760274026736/1375157624215175259/Col1.png?ex=6851a056&is=68504ed6&hm=0d1ccaf7c762fe10fd3adccde79e566da8ffc436b36859c968dcdab9ccbf4ca6&=&format=webp&quality=lossless&width=1536&height=864';
+            
+            if (stationBg) {
+                stationBg.style.backgroundImage = `url('${eliteStationImage}')`;
+            }
+        }
+
+        // Navbar hide/show on scroll
+        let lastScrollTop = 0;
+        const navbar = document.getElementById('navbar');
+        
+        window.addEventListener('scroll', () => {
+            const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
+            
+            if (scrollTop > lastScrollTop && scrollTop > 100) {
+                navbar.classList.add('hidden');
+            } else {
+                navbar.classList.remove('hidden');
+            }
+            lastScrollTop = scrollTop;
+        });
+
+        // Smooth scrolling for navigation links
+        document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+            anchor.addEventListener('click', function (e) {
+                e.preventDefault();
+                const target = document.querySelector(this.getAttribute('href'));
+                if (target) {
+                    target.scrollIntoView({
+                        behavior: 'smooth',
+                        block: 'start'
+                    });
+                }
+            });
+        });
+
+        // Enhanced background with layered starfield
+        function createStarField() {
+            const bg = document.getElementById('parallax-bg');
+            
+            // Create multiple layers of stars with different sizes and densities
+            const layers = [
+                { count: 200, sizeRange: [1, 2], opacity: [0.2, 0.5], speed: 1 },
+                { count: 100, sizeRange: [2, 3], opacity: [0.4, 0.7], speed: 0.8 },
+                { count: 50, sizeRange: [3, 4], opacity: [0.6, 1], speed: 0.6 }
+            ];
+            
+            layers.forEach((layer, layerIndex) => {
+                const starLayer = document.createElement('div');
+                starLayer.className = 'star-layer';
+                starLayer.style.zIndex = layerIndex;
+                
+                for (let i = 0; i < layer.count; i++) {
+                    const star = document.createElement('div');
+                    star.className = 'star';
+                    
+                    const size = Math.random() * (layer.sizeRange[1] - layer.sizeRange[0]) + layer.sizeRange[0];
+                    star.style.width = size + 'px';
+                    star.style.height = size + 'px';
+                    star.style.left = Math.random() * 100 + '%';
+                    star.style.top = Math.random() * 100 + '%';
+                    star.style.opacity = Math.random() * (layer.opacity[1] - layer.opacity[0]) + layer.opacity[0];
+                    star.style.boxShadow = `0 0 ${size * 2}px rgba(245, 230, 163, 0.3)`;
+                    star.style.animationDelay = Math.random() * 3 + 's';
+                    star.style.animationDuration = (Math.random() * 2 + 2) + 's';
+                    
+                    starLayer.appendChild(star);
+                }
+                
+                bg.appendChild(starLayer);
+            });
+            
+            // Add some larger "distant stars" with more glow
+            for (let i = 0; i < 20; i++) {
+                const bigStar = document.createElement('div');
+                bigStar.className = 'star';
+                bigStar.style.width = '1px';
+                bigStar.style.height = '1px';
+                bigStar.style.left = Math.random() * 100 + '%';
+                bigStar.style.top = Math.random() * 100 + '%';
+                bigStar.style.opacity = Math.random() * 0.4 + 0.6;
+                bigStar.style.boxShadow = '0 0 20px rgba(245, 230, 163, 0.8), 0 0 40px rgba(245, 230, 163, 0.4)';
+                bigStar.style.animationDuration = (Math.random() * 4 + 4) + 's';
+                bg.appendChild(bigStar);
+            }
+        }
+
+        // Initialize enhanced background
+        createStarField();
+        loadStationImage();
+    </script>
+</body>
+</html>
