@@ -1,2 +1,2 @@
-# freight-redirect
-redirects for freight.associates domain
+# freight-public
+Public pages for F.R.E.I.G.H.T.
