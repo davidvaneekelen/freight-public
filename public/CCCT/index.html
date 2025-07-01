@@ -167,8 +167,6 @@
     const matchedMarketIDs = new Set();
     const output = [];
     let lastDocked = null;
-    const totalCommodities = {};
-    let grandTotal = 0;
 
     for (const entry of parsed) {
       if (entry.event === "Docked") {
@@ -181,16 +179,17 @@
       ) {
         matchedMarketIDs.add(entry.MarketID);
 
-        const commodities = (entry.ResourcesRequired || []).map(c => {
+        const initialCommodities = (entry.ResourcesRequired || []).map(c => {
           const name = stripName(c.Name);
           const amount = c.RequiredAmount;
-
-          // Voeg toe aan globale totalen
-          totalCommodities[name] = (totalCommodities[name] || 0) + amount;
-          grandTotal += amount;
-
           return { name, amount };
         });
+
+        const currentCommodities = (entry.ResourcesRequired || []).map(c => {
+          const name = stripName(c.Name);
+          const remaining = Math.max(0, c.RequiredAmount - c.ProvidedAmount);
+          return { name, amount: remaining };
+        }).filter(c => c.amount > 0);
 
         output.push({
           StationName: lastDocked.StationName.replace(/\$EXT_PANEL_ColonisationShip;\s*/, 'System Colonisation Ship: '),
@@ -199,8 +198,10 @@
           DistFromStarLS: lastDocked.DistFromStarLS,
           ConstructionProgress: `${(entry.ConstructionProgress * 100).toFixed(2)}%`,
           ConstructionComplete: entry.ConstructionComplete,
-          Commodities: commodities,
-          LocalTotal: commodities.reduce((sum, c) => sum + c.amount, 0),
+          InitialCommodities: initialCommodities,
+          CurrentCommodities: currentCommodities,
+          InitialTotal: initialCommodities.reduce((sum, c) => sum + c.amount, 0),
+          CurrentTotal: currentCommodities.reduce((sum, c) => sum + c.amount, 0),
         });
       }
     }
