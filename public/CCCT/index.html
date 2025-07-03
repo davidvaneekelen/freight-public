@@ -5,7 +5,6 @@
   Website   : https://freight.associates
   Purpose   : Tool to analyze construction site commodity requirements and totals
   License   : Private, no public use
-
 -->
 
 <!DOCTYPE html>
@@ -244,6 +243,19 @@
       border-left: 4px solid #f5e6a3;
     }
 
+    .total-count {
+      background: rgba(245, 230, 163, 0.1);
+      border: 2px solid #f5e6a3;
+      border-radius: 10px;
+      padding: 1rem;
+      margin-top: 1rem;
+      text-align: center;
+      font-family: 'Courier New', monospace;
+      font-size: 1.2rem;
+      font-weight: 700;
+      color: #f5e6a3;
+    }
+
     .individual-jobs-section {
       margin-top: 2rem;
     }
@@ -441,6 +453,16 @@
       return name.replace("$", "").replace("_name;", "").toLowerCase();
     }
 
+    // New function to format station names - handles colonization ships
+    function formatStationName(stationName) {
+      if (stationName && stationName.includes("$EXT_PANEL_ColonisationShip;")) {
+        // Extract the ship name from the pattern "$EXT_PANEL_ColonisationShip; [name]"
+        const shipName = stationName.replace("$EXT_PANEL_ColonisationShip;", "").trim();
+        return `System Colonisation Ship: ${shipName}`;
+      }
+      return stationName;
+    }
+
     let output = [];
 
     document.getElementById("fileInput").addEventListener("change", (e) => {
@@ -468,7 +490,9 @@
       output = [];
       let lastDocked = null;
 
-      for (const entry of parsed) {
+      for (let i = 0; i < parsed.length; i++) {
+        const entry = parsed[i];
+        
         if (entry.event === "Docked") {
           lastDocked = entry;
         } else if (entry.event === "ColonisationConstructionDepot" && lastDocked && entry.MarketID === lastDocked.MarketID && !matchedMarketIDs.has(entry.MarketID)) {
@@ -485,9 +509,13 @@
             }
           }
 
+          // Find the body by tracing back through the log
+          const bodyInfo = findConstructionSiteBody(parsed, i, entry.MarketID);
+
           output.push({
-            StationName: lastDocked.StationName,
+            StationName: formatStationName(lastDocked.StationName), // Apply formatting here
             StarSystem: lastDocked.StarSystem,
+            Body: bodyInfo.body, // Add body information
             MarketID: entry.MarketID,
             ConstructionProgress: `${(entry.ConstructionProgress * 100).toFixed(2)}%`,
             InitialCommodities: initialCommodities,
@@ -498,6 +526,42 @@
       }
 
       renderOutput();
+    }
+
+    // New function to find the body of a construction site
+    function findConstructionSiteBody(parsed, constructionEventIndex, marketID) {
+      // Search backwards from the ColonisationConstructionDepot event
+      for (let i = constructionEventIndex - 1; i >= 0; i--) {
+        const event = parsed[i];
+        
+        // Look for SupercruiseDestinationDrop with matching MarketID
+        if (event.event === "SupercruiseDestinationDrop" && event.MarketID === marketID) {
+          // Found the destination drop, now search forwards for the next SupercruiseExit
+          for (let j = i + 1; j < parsed.length; j++) {
+            const exitEvent = parsed[j];
+            if (exitEvent.event === "SupercruiseExit") {
+              return {
+                body: exitEvent.Body || "Unknown Body",
+                bodyID: exitEvent.BodyID,
+                bodyType: exitEvent.BodyType
+              };
+            }
+            // Stop searching if we've gone too far (reached another major event)
+            if (exitEvent.event === "ColonisationConstructionDepot" || 
+                exitEvent.event === "SupercruiseDestinationDrop") {
+              break;
+            }
+          }
+          break; // Found the right destination drop, stop searching backwards
+        }
+      }
+      
+      // If we couldn't find the body info, return default
+      return {
+        body: "Unknown Body",
+        bodyID: null,
+        bodyType: null
+      };
     }
 
     function renderOutput() {
@@ -515,7 +579,7 @@
 
         const info = document.createElement("div");
         info.className = "site-info";
-        info.textContent = `Station: ${site.StationName}\nSystem: ${site.StarSystem}\nProgress: ${site.ConstructionProgress}`;
+        info.innerHTML = `Station: ${site.StationName}<br>System: ${site.StarSystem}<br>Body: ${site.Body}<br>Progress: ${site.ConstructionProgress}`;
         block.appendChild(info);
 
         const controls = document.createElement("div");
@@ -542,7 +606,25 @@
           row.innerHTML = `<td>${displayName}</td><td>${init}</td><td>${curr}</td>`;
           table.appendChild(row);
         });
+		// Calculate totals for this site
+		let initialTotal = 0;
+		let currentTotal = 0;
 
+		Object.values(site.InitialCommodities).forEach(amount => {
+		  initialTotal += amount;
+		});
+
+		Object.values(site.CurrentCommodities).forEach(amount => {
+		  currentTotal += amount;
+		});
+
+		// Add totals row
+		const totalsRow = document.createElement("tr");
+		totalsRow.style.borderTop = "2px solid #f5e6a3";
+		totalsRow.style.fontWeight = "bold";
+		totalsRow.style.backgroundColor = "rgba(245, 230, 163, 0.1)";
+		totalsRow.innerHTML = `<td>TOTAL</td><td>${initialTotal.toLocaleString()}</td><td>${currentTotal.toLocaleString()}</td>`;
+		table.appendChild(totalsRow);
         block.appendChild(table);
         container.appendChild(block);
       });
@@ -588,10 +670,13 @@
 
       // Build totals from current requirements only
       const totals = {};
+      let grandTotal = 0; // New variable to track total count
+      
       output.forEach(site => {
         if (site.Selected.current) {
           Object.entries(site.CurrentCommodities).forEach(([name, amount]) => {
             totals[name] = (totals[name] || 0) + amount;
+            grandTotal += amount; // Add to grand total
           });
         }
       });
@@ -600,12 +685,22 @@
         .sort((a, b) => a[0].localeCompare(b[0]))
         .map(([name, amount]) => `${commodityNameMap[name] || name}: ${amount}`);
 
+      // Create the totals content with grand total
+      let totalsContent = lines.join("\n");
+      
+      // Add grand total section if there are commodities
+      let totalCountHtml = '';
+      if (grandTotal > 0) {
+        totalCountHtml = `<div class="total-count">TOTAL COMMODITIES: ${grandTotal.toLocaleString()}</div>`;
+      }
+
       totalsBlock.innerHTML = `
         <h2 class="totals-title">Totals of Selected Commodities</h2>
         <div class="intro-text" style="text-align: center; margin-bottom: 1.5rem;">
           Please copy and paste this grand totals section for bidding purposes on your order ticket, followed by individual comments with the contents of the buttons found below for each individual site's needs.
         </div>
-        <div class="totals-content">${lines.join("\n")}</div>
+        <div class="totals-content">${totalsContent}</div>
+        ${totalCountHtml}
       `;
 
       // Update job buttons as well
