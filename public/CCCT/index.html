@@ -482,51 +482,57 @@
     });
 
     function processLogLines(lines) {
-      const parsed = lines.map(line => {
-        try { return JSON.parse(line); } catch { return null; }
-      }).filter(Boolean);
+        const parsed = lines.map(line => {
+          try { return JSON.parse(line); } catch { return null; }
+        }).filter(Boolean);
 
-      const matchedMarketIDs = new Set();
-      output = [];
-      let lastDocked = null;
+        const siteData = new Map(); // Use Map to store latest data for each MarketID
+        output = [];
+        let lastDocked = null;
 
-      for (let i = 0; i < parsed.length; i++) {
-        const entry = parsed[i];
-        
-        if (entry.event === "Docked") {
-          lastDocked = entry;
-        } else if (entry.event === "ColonisationConstructionDepot" && lastDocked && entry.MarketID === lastDocked.MarketID && !matchedMarketIDs.has(entry.MarketID)) {
-          matchedMarketIDs.add(entry.MarketID);
-          const initialCommodities = {};
-          const currentCommodities = {};
+        for (let i = 0; i < parsed.length; i++) {
+          const entry = parsed[i];
 
-          for (const c of entry.ResourcesRequired || []) {
-            const name = stripName(c.Name);
-            initialCommodities[name] = c.RequiredAmount;
-            const remaining = c.RequiredAmount - c.ProvidedAmount;
-            if (remaining > 0) {
-              currentCommodities[name] = remaining;
+          if (entry.event === "Docked") {
+            lastDocked = entry;
+          } else if (entry.event === "ColonisationConstructionDepot" && lastDocked && entry.MarketID === lastDocked.MarketID) {
+            // Remove the check for !matchedMarketIDs.has(entry.MarketID)
+            // This allows us to always update with the latest data
+
+            const initialCommodities = {};
+            const currentCommodities = {};
+
+            for (const c of entry.ResourcesRequired || []) {
+              const name = stripName(c.Name);
+              initialCommodities[name] = c.RequiredAmount;
+              const remaining = c.RequiredAmount - c.ProvidedAmount;
+              if (remaining > 0) {
+                currentCommodities[name] = remaining;
+              }
             }
+
+            // Find the body by tracing back through the log
+            const bodyInfo = findConstructionSiteBody(parsed, i, entry.MarketID);
+
+            // Store or update the site data (this will overwrite previous entries for same MarketID)
+            siteData.set(entry.MarketID, {
+              StationName: formatStationName(lastDocked.StationName),
+              StarSystem: lastDocked.StarSystem,
+              Body: bodyInfo.body,
+              MarketID: entry.MarketID,
+              ConstructionProgress: `${(entry.ConstructionProgress * 100).toFixed(2)}%`,
+              InitialCommodities: initialCommodities,
+              CurrentCommodities: currentCommodities,
+              Selected: { initial: false, current: false }
+            });
           }
-
-          // Find the body by tracing back through the log
-          const bodyInfo = findConstructionSiteBody(parsed, i, entry.MarketID);
-
-          output.push({
-            StationName: formatStationName(lastDocked.StationName), // Apply formatting here
-            StarSystem: lastDocked.StarSystem,
-            Body: bodyInfo.body, // Add body information
-            MarketID: entry.MarketID,
-            ConstructionProgress: `${(entry.ConstructionProgress * 100).toFixed(2)}%`,
-            InitialCommodities: initialCommodities,
-            CurrentCommodities: currentCommodities,
-            Selected: { initial: false, current: false }
-          });
         }
-      }
 
-      renderOutput();
-    }
+        // Convert Map values to array for output
+        output = Array.from(siteData.values());
+
+        renderOutput();
+      }
 
     // New function to find the body of a construction site
     function findConstructionSiteBody(parsed, constructionEventIndex, marketID) {
