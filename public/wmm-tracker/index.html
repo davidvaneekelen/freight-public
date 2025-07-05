@@ -1274,270 +1274,284 @@
             updateUI();
         }
 
-        // Route generation
-        // Enhanced Route generation with wing assistance
-        function generateRoutes() {
-            const commanderNames = Object.keys(missions).filter(cmd => missions[cmd]?.length > 0);
-            if (commanderNames.length === 0) return [];
-        
-            const findFleetCarrierForCommodity = (commodity) => {
-                for (const [carrierName, commodities] of Object.entries(fleetCarriers)) {
-                    if (commodities[commodity] && commodities[commodity] > 0) {
-                        return carrierName;
-                    }
-                }
-                return null;
-            };
-        
-            // Step 1: Calculate individual commander trip requirements
-            const commanderTripData = {};
-            let maxIndividualTrips = 0;
-        
-            commanderNames.forEach(commanderName => {
-                const commanderMissions = missions[commanderName] || [];
-                const cargoCapacity = commanders[commanderName]?.cargoCapacity || 752;
-        
-                const commodityGroups = {};
-                commanderMissions.forEach(mission => {
-                    if (!commodityGroups[mission.commodity]) {
-                        commodityGroups[mission.commodity] = [];
-                    }
-                    commodityGroups[mission.commodity].push({ ...mission });
-                });
-        
-                const trips = [];
-                Object.keys(commodityGroups).forEach(commodity => {
-                    const missionsForCommodity = commodityGroups[commodity];
-                    const totalNeeded = missionsForCommodity.reduce((sum, m) => sum + m.count, 0);
-                    const tripsNeeded = Math.ceil(totalNeeded / cargoCapacity);
-        
-                    let remainingMissions = [...missionsForCommodity];
-        
-                    for (let trip = 1; trip <= tripsNeeded; trip++) {
-                        let cargoHold = cargoCapacity;
-                        const deliveries = [];
-                        const completedMissions = [];
-        
-                        while (cargoHold > 0 && remainingMissions.length > 0) {
-                            const mission = remainingMissions[0];
-                            const amountToDeliver = Math.min(cargoHold, mission.count);
-        
-                            deliveries.push({
-                                missionId: mission.missionId,
-                                commodity: mission.commodity,
-                                amount: amountToDeliver,
-                                faction: mission.faction,
-                                isPartial: amountToDeliver < mission.count,
-                                originalCommander: commanderName // Track original mission owner
-                            });
-        
-                            mission.count -= amountToDeliver;
-                            cargoHold -= amountToDeliver;
-        
-                            if (mission.count === 0) {
-                                completedMissions.push(mission.missionId);
-                                remainingMissions.shift();
-                            }
-                        }
-        
-                        const carrierName = findFleetCarrierForCommodity(commodity);
-        
-                        trips.push({
-                            tripNumber: trip,
-                            commodity,
-                            cargoToLoad: cargoCapacity - cargoHold,
-                            carrierName,
-                            deliveries,
-                            completedMissions,
-                            originalCommander: commanderName,
-                            assignedCommander: commanderName // Initially assigned to original commander
-                        });
-                    }
-                });
-        
-                commanderTripData[commanderName] = trips;
-                maxIndividualTrips = Math.max(maxIndividualTrips, trips.length);
-            });
-        
-            // Step 2: Create a pool of all trips that need to be completed
-            const allTrips = [];
-            Object.values(commanderTripData).forEach(trips => {
-                allTrips.push(...trips);
-            });
-        
-            // Step 3: Redistribute trips optimally among commanders
-            const redistributedTrips = [];
-            const commanderAvailability = {}; // Track when each commander becomes available
-        
-            // Initialize availability - each commander is available after their last individual trip
-            commanderNames.forEach(commanderName => {
-                commanderAvailability[commanderName] = commanderTripData[commanderName].length;
-            });
-        
-            // Sort all trips by original commander and trip number to maintain logical order
-            allTrips.sort((a, b) => {
-                if (a.originalCommander !== b.originalCommander) {
-                    return commanderNames.indexOf(a.originalCommander) - commanderNames.indexOf(b.originalCommander);
-                }
-                return a.tripNumber - b.tripNumber;
-            });
-        
-            // Assign trips to commanders based on availability
-            allTrips.forEach((trip, globalTripIndex) => {
-                // Find the commander who will be available earliest
-                let earliestAvailable = Math.min(...Object.values(commanderAvailability));
-                let assignedCommander = Object.keys(commanderAvailability).find(
-                    cmd => commanderAvailability[cmd] === earliestAvailable
-                );
-        
-                // Update trip assignment
-                trip.assignedCommander = assignedCommander;
-                trip.globalTripNumber = earliestAvailable + 1;
-                trip.isHelping = trip.assignedCommander !== trip.originalCommander;
-        
-                // Update commander availability
-                commanderAvailability[assignedCommander]++;
-        
-                redistributedTrips.push(trip);
-            });
-        
-            // Step 4: Group trips by global trip number
-            const maxGlobalTrips = Math.max(...redistributedTrips.map(trip => trip.globalTripNumber));
-            const tripGroups = [];
-        
-            for (let globalTripNum = 1; globalTripNum <= maxGlobalTrips; globalTripNum++) {
-                const tripsForThisGlobalTrip = redistributedTrips.filter(trip => trip.globalTripNumber === globalTripNum);
-                
-                if (tripsForThisGlobalTrip.length === 0) continue;
-        
-                const tripActions = [];
-        
-                // Create commander mapping for this trip
-                const commanderMapping = {};
-                commanderNames.forEach(cmd => {
-                    commanderMapping[cmd] = null; // Default to no trip
-                });
-        
-                // Assign trips to commanders
-                tripsForThisGlobalTrip.forEach(trip => {
-                    commanderMapping[trip.assignedCommander] = trip;
-                });
-        
-                // Fly to FC
-                tripActions.push({
-                    id: `fly-fc-${globalTripNum}`,
-                    action: 'Fly to FC',
-                    commanders: commanderNames.reduce((acc, cmd) => {
-                        const trip = commanderMapping[cmd];
-                        if (trip) {
-                            const destination = trip.carrierName || `Fleet Carrier for ${trip.commodity}`;
-                            if (trip.isHelping) {
-                                acc[cmd] = `→ ${destination} (Helping ${trip.originalCommander})`;
-                            } else {
-                                acc[cmd] = `→ ${destination}`;
-                            }
-                        } else {
-                            acc[cmd] = '';
-                        }
-                        return acc;
-                    }, {})
-                });
-        
-                // Purchase Commodities
-                tripActions.push({
-                    id: `purchase-${globalTripNum}`,
-                    action: 'Purchase Commodities',
-                    commanders: commanderNames.reduce((acc, cmd) => {
-                        const trip = commanderMapping[cmd];
-                        if (trip) {
-                            if (trip.isHelping) {
-                                acc[cmd] = `${trip.cargoToLoad}t ${trip.commodity} (Helping ${trip.originalCommander})`;
-                            } else {
-                                acc[cmd] = `${trip.cargoToLoad}t ${trip.commodity}`;
-                            }
-                        } else {
-                            acc[cmd] = '';
-                        }
-                        return acc;
-                    }, {})
-                });
-        
-                // Fly to Station
-                tripActions.push({
-                    id: `fly-station-${globalTripNum}`,
-                    action: 'Fly to Station',
-                    commanders: commanderNames.reduce((acc, cmd) => {
-                        const trip = commanderMapping[cmd];
-                        if (trip) {
-                            if (trip.isHelping) {
-                                acc[cmd] = `Return to Station (Helping ${trip.originalCommander})`;
-                            } else {
-                                acc[cmd] = 'Return to Station';
-                            }
-                        } else {
-                            acc[cmd] = '';
-                        }
-                        return acc;
-                    }, {})
-                });
-        
-                // Deliver to Mission(s)
-                const maxDeliveries = Math.max(...tripsForThisGlobalTrip.map(trip => trip.deliveries.length));
-        
-                for (let deliveryIndex = 0; deliveryIndex < maxDeliveries; deliveryIndex++) {
-                    tripActions.push({
-                        id: `deliver-${globalTripNum}-${deliveryIndex}`,
-                        action: 'Deliver to Mission',
-                        commanders: commanderNames.reduce((acc, cmd) => {
-                            const trip = commanderMapping[cmd];
-                            if (trip && trip.deliveries[deliveryIndex]) {
-                                const delivery = trip.deliveries[deliveryIndex];
-                                const partialText = delivery.isPartial ? ' (partial)' : '';
-                                if (trip.isHelping) {
-                                    acc[cmd] = `${delivery.amount}t ${delivery.commodity} | ${delivery.faction}${partialText} (Helping ${trip.originalCommander})`;
-                                } else {
-                                    acc[cmd] = `${delivery.amount}t ${delivery.commodity} | ${delivery.faction}${partialText}`;
-                                }
-                            } else {
-                                acc[cmd] = '';
-                            }
-                            return acc;
-                        }, {})
-                    });
-                }
-        
-                // Complete Mission
-                const anyCompletions = tripsForThisGlobalTrip.some(trip => trip.completedMissions.length > 0);
-        
-                if (anyCompletions) {
-                    tripActions.push({
-                        id: `complete-${globalTripNum}`,
-                        action: 'Complete Mission',
-                        commanders: commanderNames.reduce((acc, cmd) => {
-                            const trip = commanderMapping[cmd];
-                            if (trip && trip.completedMissions.length > 0) {
-                                if (trip.isHelping) {
-                                    acc[cmd] = `${trip.completedMissions.length} mission(s) completed (Helping ${trip.originalCommander})`;
-                                } else {
-                                    acc[cmd] = `${trip.completedMissions.length} mission(s) completed`;
-                                }
-                            } else {
-                                acc[cmd] = '';
-                            }
-                            return acc;
-                        }, {})
-                    });
-                }
-        
-                tripGroups.push({
-                    tripNumber: globalTripNum,
-                    actions: tripActions,
-                    commanders: commanderNames
-                });
-            }
-        
-            return tripGroups;
-        }
+       // Enhanced Route generation with wing assistance
+      function generateRoutes() {
+          const commanderNames = Object.keys(missions).filter(cmd => missions[cmd]?.length > 0);
+          if (commanderNames.length === 0) return [];
+      
+          const findFleetCarrierForCommodity = (commodity) => {
+              for (const [carrierName, commodities] of Object.entries(fleetCarriers)) {
+                  if (commodities[commodity] && commodities[commodity] > 0) {
+                      return carrierName;
+                  }
+              }
+              return null;
+          };
+      
+          // Step 1: Calculate individual commander trip requirements
+          const commanderTripData = {};
+          let maxIndividualTrips = 0;
+      
+          commanderNames.forEach(commanderName => {
+              const commanderMissions = missions[commanderName] || [];
+              const cargoCapacity = commanders[commanderName]?.cargoCapacity || 752;
+      
+              const commodityGroups = {};
+              commanderMissions.forEach(mission => {
+                  if (!commodityGroups[mission.commodity]) {
+                      commodityGroups[mission.commodity] = [];
+                  }
+                  commodityGroups[mission.commodity].push({ ...mission });
+              });
+      
+              const trips = [];
+              Object.keys(commodityGroups).forEach(commodity => {
+                  const missionsForCommodity = commodityGroups[commodity];
+                  const totalNeeded = missionsForCommodity.reduce((sum, m) => sum + m.count, 0);
+                  const tripsNeeded = Math.ceil(totalNeeded / cargoCapacity);
+      
+                  let remainingMissions = [...missionsForCommodity];
+      
+                  for (let trip = 1; trip <= tripsNeeded; trip++) {
+                      let cargoHold = cargoCapacity;
+                      const deliveries = [];
+                      const completedMissions = [];
+      
+                      while (cargoHold > 0 && remainingMissions.length > 0) {
+                          const mission = remainingMissions[0];
+                          const amountToDeliver = Math.min(cargoHold, mission.count);
+      
+                          deliveries.push({
+                              missionId: mission.missionId,
+                              commodity: mission.commodity,
+                              amount: amountToDeliver,
+                              faction: mission.faction,
+                              isPartial: amountToDeliver < mission.count,
+                              originalCommander: commanderName // Track original mission owner
+                          });
+      
+                          mission.count -= amountToDeliver;
+                          cargoHold -= amountToDeliver;
+      
+                          if (mission.count === 0) {
+                              completedMissions.push(mission.missionId);
+                              remainingMissions.shift();
+                          }
+                      }
+      
+                      const carrierName = findFleetCarrierForCommodity(commodity);
+      
+                      trips.push({
+                          tripNumber: trip,
+                          commodity,
+                          cargoToLoad: cargoCapacity - cargoHold,
+                          carrierName,
+                          deliveries,
+                          completedMissions,
+                          originalCommander: commanderName,
+                          assignedCommander: commanderName // Initially assigned to original commander
+                      });
+                  }
+              });
+      
+              commanderTripData[commanderName] = trips;
+              maxIndividualTrips = Math.max(maxIndividualTrips, trips.length);
+          });
+      
+          // Step 2: Create a pool of all trips that need to be completed
+          const allTrips = [];
+          Object.values(commanderTripData).forEach(trips => {
+              allTrips.push(...trips);
+          });
+      
+          // Step 3: Redistribute trips optimally among commanders
+          const redistributedTrips = [];
+          
+          // First, assign all trips to their original commanders with sequential trip numbers
+          allTrips.forEach((trip, index) => {
+              trip.assignedCommander = trip.originalCommander;
+              trip.globalTripNumber = trip.tripNumber;
+              trip.isHelping = false;
+              redistributedTrips.push(trip);
+          });
+      
+          // Find the maximum number of trips any commander needs
+          const maxTripsNeeded = Math.max(...commanderNames.map(cmd => commanderTripData[cmd].length));
+      
+          // Now optimize: for each trip slot beyond a commander's own missions,
+          // assign remaining work from other commanders
+          const commanderWorkload = {}; // Track current trip assignments per commander
+          commanderNames.forEach(cmd => {
+              commanderWorkload[cmd] = commanderTripData[cmd].length;
+          });
+      
+          // Get all trips that need reassignment (after commanders finish their own work)
+          const availableTrips = redistributedTrips.filter(trip => 
+              trip.globalTripNumber > commanderWorkload[trip.originalCommander]
+          );
+      
+          // Sort available trips by original trip number to maintain logical order
+          availableTrips.sort((a, b) => {
+              if (a.originalCommander !== b.originalCommander) {
+                  return commanderNames.indexOf(a.originalCommander) - commanderNames.indexOf(b.originalCommander);
+              }
+              return a.tripNumber - b.tripNumber;
+          });
+      
+          // Reassign these trips to commanders who finish early
+          availableTrips.forEach(trip => {
+              // Find commander with least current workload
+              let minWorkload = Math.min(...Object.values(commanderWorkload));
+              let assignedCommander = Object.keys(commanderWorkload).find(
+                  cmd => commanderWorkload[cmd] === minWorkload
+              );
+      
+              // Update the trip assignment
+              trip.assignedCommander = assignedCommander;
+              trip.globalTripNumber = commanderWorkload[assignedCommander] + 1;
+              trip.isHelping = true;
+      
+              // Update workload tracking
+              commanderWorkload[assignedCommander]++;
+          });
+      
+          // Step 4: Group trips by global trip number
+          const finalMaxTrips = Math.max(...Object.values(commanderWorkload));
+          const tripGroups = [];
+      
+          for (let globalTripNum = 1; globalTripNum <= finalMaxTrips; globalTripNum++) {
+              const tripsForThisGlobalTrip = redistributedTrips.filter(trip => trip.globalTripNumber === globalTripNum);
+              
+              if (tripsForThisGlobalTrip.length === 0) continue;
+      
+              const tripActions = [];
+      
+              // Create commander mapping for this trip
+              const commanderMapping = {};
+              commanderNames.forEach(cmd => {
+                  commanderMapping[cmd] = null; // Default to no trip
+              });
+      
+              // Assign trips to commanders
+              tripsForThisGlobalTrip.forEach(trip => {
+                  commanderMapping[trip.assignedCommander] = trip;
+              });
+      
+              // Fly to FC
+              tripActions.push({
+                  id: `fly-fc-${globalTripNum}`,
+                  action: 'Fly to FC',
+                  commanders: commanderNames.reduce((acc, cmd) => {
+                      const trip = commanderMapping[cmd];
+                      if (trip) {
+                          const destination = trip.carrierName || `Fleet Carrier for ${trip.commodity}`;
+                          if (trip.isHelping) {
+                              acc[cmd] = `→ ${destination} (Helping ${trip.originalCommander})`;
+                          } else {
+                              acc[cmd] = `→ ${destination}`;
+                          }
+                      } else {
+                          acc[cmd] = '';
+                      }
+                      return acc;
+                  }, {})
+              });
+      
+              // Purchase Commodities
+              tripActions.push({
+                  id: `purchase-${globalTripNum}`,
+                  action: 'Purchase Commodities',
+                  commanders: commanderNames.reduce((acc, cmd) => {
+                      const trip = commanderMapping[cmd];
+                      if (trip) {
+                          if (trip.isHelping) {
+                              acc[cmd] = `${trip.cargoToLoad}t ${trip.commodity} (Helping ${trip.originalCommander})`;
+                          } else {
+                              acc[cmd] = `${trip.cargoToLoad}t ${trip.commodity}`;
+                          }
+                      } else {
+                          acc[cmd] = '';
+                      }
+                      return acc;
+                  }, {})
+              });
+      
+              // Fly to Station
+              tripActions.push({
+                  id: `fly-station-${globalTripNum}`,
+                  action: 'Fly to Station',
+                  commanders: commanderNames.reduce((acc, cmd) => {
+                      const trip = commanderMapping[cmd];
+                      if (trip) {
+                          if (trip.isHelping) {
+                              acc[cmd] = `Return to Station (Helping ${trip.originalCommander})`;
+                          } else {
+                              acc[cmd] = 'Return to Station';
+                          }
+                      } else {
+                          acc[cmd] = '';
+                      }
+                      return acc;
+                  }, {})
+              });
+      
+              // Deliver to Mission(s)
+              const maxDeliveries = Math.max(...tripsForThisGlobalTrip.map(trip => trip.deliveries.length));
+      
+              for (let deliveryIndex = 0; deliveryIndex < maxDeliveries; deliveryIndex++) {
+                  tripActions.push({
+                      id: `deliver-${globalTripNum}-${deliveryIndex}`,
+                      action: 'Deliver to Mission',
+                      commanders: commanderNames.reduce((acc, cmd) => {
+                          const trip = commanderMapping[cmd];
+                          if (trip && trip.deliveries[deliveryIndex]) {
+                              const delivery = trip.deliveries[deliveryIndex];
+                              const partialText = delivery.isPartial ? ' (partial)' : '';
+                              if (trip.isHelping) {
+                                  acc[cmd] = `${delivery.amount}t ${delivery.commodity} | ${delivery.faction}${partialText} (Helping ${trip.originalCommander})`;
+                              } else {
+                                  acc[cmd] = `${delivery.amount}t ${delivery.commodity} | ${delivery.faction}${partialText}`;
+                              }
+                          } else {
+                              acc[cmd] = '';
+                          }
+                          return acc;
+                      }, {})
+                  });
+              }
+      
+              // Complete Mission
+              const anyCompletions = tripsForThisGlobalTrip.some(trip => trip.completedMissions.length > 0);
+      
+              if (anyCompletions) {
+                  tripActions.push({
+                      id: `complete-${globalTripNum}`,
+                      action: 'Complete Mission',
+                      commanders: commanderNames.reduce((acc, cmd) => {
+                          const trip = commanderMapping[cmd];
+                          if (trip && trip.completedMissions.length > 0) {
+                              if (trip.isHelping) {
+                                  acc[cmd] = `${trip.completedMissions.length} mission(s) completed (Helping ${trip.originalCommander})`;
+                              } else {
+                                  acc[cmd] = `${trip.completedMissions.length} mission(s) completed`;
+                              }
+                          } else {
+                              acc[cmd] = '';
+                          }
+                          return acc;
+                      }, {})
+                  });
+              }
+      
+              tripGroups.push({
+                  tripNumber: globalTripNum,
+                  actions: tripActions,
+                  commanders: commanderNames
+              });
+          }
+      
+          return tripGroups;
+      }
 
         // UI Update functions
         function updateUI() {
