@@ -690,7 +690,13 @@
         <div id="routeSection" class="glass-panel hidden">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
                 <h2 class="subheader" style="margin-bottom: 0;">📈 Route Planner</h2>
-                <button class="btn-primary" onclick="updateRoutes()">🔄 Refresh Routes</button>
+                <div style="display: flex; align-items: center; gap: 1rem;">
+                    <div class="checkbox-row">
+                        <input type="checkbox" id="enableWingAssistance" onchange="updateRoutes()" checked>
+                        <label for="enableWingAssistance" style="color: #f5e6a3; font-size: 0.9rem;">Enable Wing Assistance</label>
+                    </div>
+                    <button class="btn-primary" onclick="updateRoutes()">🔄 Refresh Routes</button>
+                </div>
             </div>
             <div id="routeContent"></div>
         </div>
@@ -1274,11 +1280,13 @@
             updateUI();
         }
 
-        // Route generation
         // Commodity-by-commodity route generation with intelligent wing assistance
         function generateRoutes() {
             const commanderNames = Object.keys(missions).filter(cmd => missions[cmd]?.length > 0);
             if (commanderNames.length === 0) return [];
+
+            // Check if wing assistance is enabled
+            const wingAssistanceEnabled = document.getElementById('enableWingAssistance')?.checked ?? true;
 
             const findFleetCarrierForCommodity = (commodity) => {
                 for (const [carrierName, commodities] of Object.entries(fleetCarriers)) {
@@ -1358,8 +1366,8 @@
                             }
                         }
 
-                        // Step 4: If still have cargo space, help other commanders with this commodity
-                        if (cargoHold > 0) {
+                        // Step 4: If wing assistance is enabled and still have cargo space, help other commanders
+                        if (wingAssistanceEnabled && cargoHold > 0) {
                             // Find other commanders who still have missions for this commodity
                             const helpCandidates = commanderNames.filter(otherCmd => 
                                 otherCmd !== commanderName && 
