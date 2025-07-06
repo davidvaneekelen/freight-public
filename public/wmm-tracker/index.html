@@ -1275,11 +1275,10 @@
         }
 
         // Route generation
+        // Commodity-by-commodity route generation with intelligent wing assistance
         function generateRoutes() {
             const commanderNames = Object.keys(missions).filter(cmd => missions[cmd]?.length > 0);
             if (commanderNames.length === 0) return [];
-
-            const routeData = {};
 
             const findFleetCarrierForCommodity = (commodity) => {
                 for (const [carrierName, commodities] of Object.entries(fleetCarriers)) {
@@ -1290,33 +1289,54 @@
                 return null;
             };
 
+            // Step 1: Group all missions by commodity across all commanders
+            const globalCommodityGroups = {};
             commanderNames.forEach(commanderName => {
                 const commanderMissions = missions[commanderName] || [];
-                const cargoCapacity = commanders[commanderName]?.cargoCapacity || 752;
-
-                const commodityGroups = {};
                 commanderMissions.forEach(mission => {
-                    if (!commodityGroups[mission.commodity]) {
-                        commodityGroups[mission.commodity] = [];
+                    if (!globalCommodityGroups[mission.commodity]) {
+                        globalCommodityGroups[mission.commodity] = {};
                     }
-                    commodityGroups[mission.commodity].push({ ...mission });
+                    if (!globalCommodityGroups[mission.commodity][commanderName]) {
+                        globalCommodityGroups[mission.commodity][commanderName] = [];
+                    }
+                    globalCommodityGroups[mission.commodity][commanderName].push({ ...mission });
+                });
+            });
+
+            const phases = [];
+
+            // Step 2: Process each commodity as a separate phase
+            Object.keys(globalCommodityGroups).sort().forEach((commodity, phaseIndex) => {
+                const commodityMissions = globalCommodityGroups[commodity];
+                
+                // Create working copies of missions for this commodity
+                const workingMissions = {};
+                Object.keys(commodityMissions).forEach(cmd => {
+                    workingMissions[cmd] = commodityMissions[cmd].map(m => ({ ...m }));
                 });
 
-                const trips = [];
-                Object.keys(commodityGroups).forEach(commodity => {
-                    const missionsForCommodity = commodityGroups[commodity];
-                    const totalNeeded = missionsForCommodity.reduce((sum, m) => sum + m.count, 0);
-                    const tripsNeeded = Math.ceil(totalNeeded / cargoCapacity);
+                const phaseTrips = [];
+                let tripNumber = 1;
 
-                    let remainingMissions = [...missionsForCommodity];
+                // Continue until all missions for this commodity are complete
+                while (Object.values(workingMissions).some(cmdMissions => cmdMissions.length > 0)) {
+                    const tripAssignments = {};
+                    
+                    // Step 3: Each commander works on their own missions first
+                    commanderNames.forEach(commanderName => {
+                        if (!workingMissions[commanderName] || workingMissions[commanderName].length === 0) {
+                            return; // This commander has no missions left for this commodity
+                        }
 
-                    for (let trip = 1; trip <= tripsNeeded; trip++) {
+                        const cargoCapacity = commanders[commanderName]?.cargoCapacity || 752;
                         let cargoHold = cargoCapacity;
                         const deliveries = [];
                         const completedMissions = [];
 
-                        while (cargoHold > 0 && remainingMissions.length > 0) {
-                            const mission = remainingMissions[0];
+                        // First, handle own missions
+                        while (cargoHold > 0 && workingMissions[commanderName].length > 0) {
+                            const mission = workingMissions[commanderName][0];
                             const amountToDeliver = Math.min(cargoHold, mission.count);
 
                             deliveries.push({
@@ -1324,7 +1344,9 @@
                                 commodity: mission.commodity,
                                 amount: amountToDeliver,
                                 faction: mission.faction,
-                                isPartial: amountToDeliver < mission.count
+                                isPartial: amountToDeliver < mission.count,
+                                targetCommander: commanderName,
+                                isOwnMission: true
                             });
 
                             mission.count -= amountToDeliver;
@@ -1332,126 +1354,184 @@
 
                             if (mission.count === 0) {
                                 completedMissions.push(mission.missionId);
-                                remainingMissions.shift();
+                                workingMissions[commanderName].shift();
                             }
                         }
 
-                        const carrierName = findFleetCarrierForCommodity(commodity);
+                        // Step 4: If still have cargo space, help other commanders with this commodity
+                        if (cargoHold > 0) {
+                            // Find other commanders who still have missions for this commodity
+                            const helpCandidates = commanderNames.filter(otherCmd => 
+                                otherCmd !== commanderName && 
+                                workingMissions[otherCmd] && 
+                                workingMissions[otherCmd].length > 0
+                            );
 
-                        trips.push({
-                            tripNumber: trip,
-                            commodity,
-                            cargoToLoad: cargoCapacity - cargoHold,
-                            carrierName,
-                            deliveries,
-                            completedMissions
+                            for (const otherCmd of helpCandidates) {
+                                if (cargoHold <= 0) break;
+
+                                while (cargoHold > 0 && workingMissions[otherCmd].length > 0) {
+                                    const mission = workingMissions[otherCmd][0];
+                                    const amountToDeliver = Math.min(cargoHold, mission.count);
+
+                                    deliveries.push({
+                                        missionId: mission.missionId,
+                                        commodity: mission.commodity,
+                                        amount: amountToDeliver,
+                                        faction: mission.faction,
+                                        isPartial: amountToDeliver < mission.count,
+                                        targetCommander: otherCmd,
+                                        isOwnMission: false
+                                    });
+
+                                    mission.count -= amountToDeliver;
+                                    cargoHold -= amountToDeliver;
+
+                                    if (mission.count === 0) {
+                                        completedMissions.push(mission.missionId);
+                                        workingMissions[otherCmd].shift();
+                                    }
+                                }
+                            }
+                        }
+
+                        // Only create trip assignment if there are deliveries
+                        if (deliveries.length > 0) {
+                            tripAssignments[commanderName] = {
+                                tripNumber: tripNumber,
+                                commodity: commodity,
+                                cargoToLoad: cargoCapacity - cargoHold,
+                                carrierName: findFleetCarrierForCommodity(commodity),
+                                deliveries: deliveries,
+                                completedMissions: completedMissions
+                            };
+                        }
+                    });
+
+                    // Add this trip if any commander has assignments
+                    if (Object.keys(tripAssignments).length > 0) {
+                        phaseTrips.push({
+                            tripNumber: tripNumber,
+                            assignments: tripAssignments
                         });
+                        tripNumber++;
                     }
-                });
+                }
 
-                routeData[commanderName] = trips;
+                // Add this phase to the results
+                if (phaseTrips.length > 0) {
+                    phases.push({
+                        phaseNumber: phaseIndex + 1,
+                        commodity: commodity,
+                        trips: phaseTrips
+                    });
+                }
             });
 
-            const maxTrips = Math.max(...commanderNames.map(cmd => routeData[cmd].length));
+            // Step 5: Convert phases to the expected trip group format
             const tripGroups = [];
 
-            for (let tripIndex = 0; tripIndex < maxTrips; tripIndex++) {
-                const tripNum = tripIndex + 1;
-                const tripActions = [];
-
-                const hasAnyTrip = commanderNames.some(cmd => routeData[cmd][tripIndex]);
-                if (!hasAnyTrip) continue;
-
-                // Fly to FC
-                tripActions.push({
-                    id: `fly-fc-${tripNum}`,
-                    action: 'Fly to FC',
-                    commanders: commanderNames.reduce((acc, cmd) => {
-                        const trip = routeData[cmd][tripIndex];
-                        if (trip) {
-                            const destination = trip.carrierName || `Fleet Carrier for ${trip.commodity}`;
-                            acc[cmd] = `→ ${destination}`;
-                        } else {
-                            acc[cmd] = '';
-                        }
-                        return acc;
-                    }, {})
-                });
-
-                // Purchase Commodities
-                tripActions.push({
-                    id: `purchase-${tripNum}`,
-                    action: 'Purchase Commodities',
-                    commanders: commanderNames.reduce((acc, cmd) => {
-                        const trip = routeData[cmd][tripIndex];
-                        acc[cmd] = trip ? `${trip.cargoToLoad}t ${trip.commodity}` : '';
-                        return acc;
-                    }, {})
-                });
-
-                // Fly to Station
-                tripActions.push({
-                    id: `fly-station-${tripNum}`,
-                    action: 'Fly to Station',
-                    commanders: commanderNames.reduce((acc, cmd) => {
-                        const trip = routeData[cmd][tripIndex];
-                        acc[cmd] = trip ? 'Return to Station' : '';
-                        return acc;
-                    }, {})
-                });
-
-                // Deliver to Mission(s)
-                const maxDeliveries = Math.max(...commanderNames.map(cmd => {
-                    const trip = routeData[cmd][tripIndex];
-                    return trip ? trip.deliveries.length : 0;
-                }));
-
-                for (let deliveryIndex = 0; deliveryIndex < maxDeliveries; deliveryIndex++) {
-                    tripActions.push({
-                        id: `deliver-${tripNum}-${deliveryIndex}`,
-                        action: 'Deliver to Mission',
-                        commanders: commanderNames.reduce((acc, cmd) => {
-                            const trip = routeData[cmd][tripIndex];
-                            if (trip && trip.deliveries[deliveryIndex]) {
-                                const delivery = trip.deliveries[deliveryIndex];
-                                const partialText = delivery.isPartial ? ' (partial)' : '';
-                                acc[cmd] = `${delivery.amount}t ${delivery.commodity} | ${delivery.faction}${partialText}`;
-                            } else {
-                                acc[cmd] = '';
-                            }
-                            return acc;
-                        }, {})
-                    });
-                }
-
-                // Complete Mission
-                const anyCompletions = commanderNames.some(cmd => {
-                    const trip = routeData[cmd][tripIndex];
-                    return trip && trip.completedMissions.length > 0;
-                });
-
-                if (anyCompletions) {
-                    tripActions.push({
-                        id: `complete-${tripNum}`,
-                        action: 'Complete Mission',
-                        commanders: commanderNames.reduce((acc, cmd) => {
-                            const trip = routeData[cmd][tripIndex];
-                            if (trip && trip.completedMissions.length > 0) {
-                                acc[cmd] = `${trip.completedMissions.length} mission(s) completed`;
-                            } else {
-                                acc[cmd] = '';
-                            }
-                            return acc;
-                        }, {})
-                    });
-                }
-
+            phases.forEach(phase => {
+                // Add phase header
                 tripGroups.push({
-                    tripNumber: tripNum,
-                    actions: tripActions,
+                    isPhaseHeader: true,
+                    phaseNumber: phase.phaseNumber,
+                    commodity: phase.commodity,
                     commanders: commanderNames
                 });
-            }
+
+                // Add trips for this phase
+                phase.trips.forEach(trip => {
+                    const tripActions = [];
+
+                    // Fly to FC
+                    tripActions.push({
+                        id: `phase-${phase.phaseNumber}-fly-fc-${trip.tripNumber}`,
+                        action: 'Fly to FC',
+                        commanders: commanderNames.reduce((acc, cmd) => {
+                            const assignment = trip.assignments[cmd];
+                            if (assignment) {
+                                const destination = assignment.carrierName || `Fleet Carrier for ${assignment.commodity}`;
+                                acc[cmd] = `→ ${destination}`;
+                            } else {
+                                acc[cmd] = '';
+                            }
+                            return acc;
+                        }, {})
+                    });
+
+                    // Purchase Commodities
+                    tripActions.push({
+                        id: `phase-${phase.phaseNumber}-purchase-${trip.tripNumber}`,
+                        action: 'Purchase Commodities',
+                        commanders: commanderNames.reduce((acc, cmd) => {
+                            const assignment = trip.assignments[cmd];
+                            acc[cmd] = assignment ? `${assignment.cargoToLoad}t ${assignment.commodity}` : '';
+                            return acc;
+                        }, {})
+                    });
+
+                    // Fly to Station
+                    tripActions.push({
+                        id: `phase-${phase.phaseNumber}-fly-station-${trip.tripNumber}`,
+                        action: 'Fly to Station',
+                        commanders: commanderNames.reduce((acc, cmd) => {
+                            const assignment = trip.assignments[cmd];
+                            acc[cmd] = assignment ? 'Return to Station' : '';
+                            return acc;
+                        }, {})
+                    });
+
+                    // Deliver to Mission(s)
+                    const maxDeliveries = Math.max(...Object.values(trip.assignments).map(a => a.deliveries.length));
+
+                    for (let deliveryIndex = 0; deliveryIndex < maxDeliveries; deliveryIndex++) {
+                        tripActions.push({
+                            id: `phase-${phase.phaseNumber}-deliver-${trip.tripNumber}-${deliveryIndex}`,
+                            action: 'Deliver to Mission',
+                            commanders: commanderNames.reduce((acc, cmd) => {
+                                const assignment = trip.assignments[cmd];
+                                if (assignment && assignment.deliveries[deliveryIndex]) {
+                                    const delivery = assignment.deliveries[deliveryIndex];
+                                    const partialText = delivery.isPartial ? ' (partial)' : '';
+                                    const helpText = delivery.isOwnMission ? '' : ` (Help ${delivery.targetCommander})`;
+                                    acc[cmd] = `${delivery.amount}t ${delivery.commodity} | ${delivery.faction}${partialText}${helpText}`;
+                                } else {
+                                    acc[cmd] = '';
+                                }
+                                return acc;
+                            }, {})
+                        });
+                    }
+
+                    // Complete Mission
+                    const anyCompletions = Object.values(trip.assignments).some(a => a.completedMissions.length > 0);
+
+                    if (anyCompletions) {
+                        tripActions.push({
+                            id: `phase-${phase.phaseNumber}-complete-${trip.tripNumber}`,
+                            action: 'Complete Mission',
+                            commanders: commanderNames.reduce((acc, cmd) => {
+                                const assignment = trip.assignments[cmd];
+                                if (assignment && assignment.completedMissions.length > 0) {
+                                    acc[cmd] = `${assignment.completedMissions.length} mission(s) completed`;
+                                } else {
+                                    acc[cmd] = '';
+                                }
+                                return acc;
+                            }, {})
+                        });
+                    }
+
+                    tripGroups.push({
+                        tripNumber: trip.tripNumber,
+                        phaseNumber: phase.phaseNumber,
+                        commodity: phase.commodity,
+                        actions: tripActions,
+                        commanders: commanderNames
+                    });
+                });
+            });
 
             return tripGroups;
         }
