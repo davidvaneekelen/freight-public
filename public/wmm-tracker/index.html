@@ -1598,5 +1598,393 @@
                         actions: tripActions,
                         commanders: commanderNames
                     });
+                                return tripGroups;
+        }
+
+        // UI Update functions
+        function updateUI() {
+            updateFileList();
+            updateCommodities();
+            updateFleetCarriers();
+            updateCommanders();
+            updateExpiredMissions();
+            updateSummary();
+            updateRoutes();
+            updateEmptyState();
+        }
+
+        function updateFileList() {
+            const container = document.getElementById('uploadedFiles');
+            const list = document.getElementById('fileList');
+
+            if (uploadedFiles.length > 0) {
+                container.classList.remove('hidden');
+
+                let html = '';
+                uploadedFiles.forEach(folder => {
+                    const stats = folderStats[folder] || { filesScanned: 0, missionsFound: 0 };
+
+                    html += `
+                        <div class="file-folder-display">
+                            <div class="file-folder-header">
+                                <span style="font-size: 1.2rem;">📁</span>
+                                <span style="font-weight: 600; font-size: 0.875rem;">${folder}</span>
+                            </div>
+                            <div class="file-folder-stats">
+                                <div>→ ${stats.filesScanned} Log files scanned</div>
+                                <div>→ ${stats.missionsFound} Missions found</div>
+                            </div>
+                        </div>
+                    `;
+                });
+
+                list.innerHTML = html;
+            } else {
+                container.classList.add('hidden');
+            }
+        }
+
+        function updateCommodities() {
+            const activeCommodities = document.getElementById('activeCommodities');
+            const suggestedCommodities = document.getElementById('suggestedCommodities');
+            const noCommodities = document.getElementById('noCommodities');
+            const commodityList = document.getElementById('commodityList');
+            const suggestedList = document.getElementById('suggestedList');
+
+            // Active commodities
+            if (commodities.length > 0) {
+                activeCommodities.classList.remove('hidden');
+                noCommodities.classList.add('hidden');
+                commodityList.innerHTML = commodities.map(commodity =>
+                    `<span class="tag tag-green">
+                        ${commodity}
+                        <button onclick="removeCommodity('${commodity}')" style="background: none; border: none; color: #f5e6a3; cursor: pointer; margin-left: 0.25rem;">×</button>
+                    </span>`
+                ).join('');
+            } else {
+                activeCommodities.classList.add('hidden');
+                noCommodities.classList.remove('hidden');
+            }
+
+            // Suggested commodities
+            const suggested = getSuggestedCommodities();
+            if (suggested.length > 0) {
+                suggestedCommodities.classList.remove('hidden');
+                suggestedList.innerHTML = suggested.map(commodity =>
+                    `<span class="tag tag-blue" onclick="addSuggestedCommodity('${commodity}')">
+                        ${commodity} +
+                    </span>`
+                ).join('');
+            } else {
+                suggestedCommodities.classList.add('hidden');
+            }
+        }
+
+        function updateFleetCarriers() {
+            const carrierTable = document.getElementById('carrierTable');
+            const noCarriers = document.getElementById('noCarriers');
+
+            if (commodities.length > 0) {
+                carrierTable.classList.remove('hidden');
+                noCarriers.classList.add('hidden');
+
+                // Calculate total required quantities from all active missions
+                const totalRequired = {};
+                commodities.forEach(commodity => {
+                    totalRequired[commodity] = 0;
+                });
+
+                Object.keys(missions).forEach(commanderName => {
+                    const commanderMissions = missions[commanderName] || [];
+                    commanderMissions.forEach(mission => {
+                        if (totalRequired.hasOwnProperty(mission.commodity)) {
+                            totalRequired[mission.commodity] += mission.count;
+                        }
+                    });
+                });
+
+                // Calculate total available in all fleet carriers
+                const totalAvailable = {};
+                commodities.forEach(commodity => {
+                    totalAvailable[commodity] = 0;
+                    Object.keys(fleetCarriers).forEach(carrierName => {
+                        totalAvailable[commodity] += fleetCarriers[carrierName][commodity] || 0;
+                    });
+                });
+
+                let html = '<table><thead><tr><th>Fleet Carrier</th>';
+                commodities.forEach(commodity => {
+                    html += `<th class="text-center">${commodity}</th>`;
+                });
+                html += '<th class="text-center">Action</th></tr></thead><tbody>';
+
+                // Fleet Carrier rows (show placeholder if none exist)
+                if (Object.keys(fleetCarriers).length === 0) {
+                    html += `<tr>
+                <td colspan="${commodities.length + 2}" class="text-center" style="padding: 2rem; color: rgba(245, 230, 163, 0.6); font-style: italic;">
+                Please enter one or more Fleet Carriers above to track commodity inventory
+                </td>
+                </tr>`;
+                } else {
+                    Object.keys(fleetCarriers).forEach(carrierName => {
+                        html += `<tr><td>${carrierName}</td>`;
+                        commodities.forEach(commodity => {
+                            const amount = fleetCarriers[carrierName][commodity] || 0;
+                            html += `<td class="text-center">
+                            <input type="number" value="${amount}" min="0" 
+                            onchange="updateCarrierAmount('${carrierName}', '${commodity}', this.value)"
+                            style="width: 80px; text-align: center; border: none; background: transparent; color: #f5e6a3;">
+                            </td>`;
+                        });
+                        html += `<td class="text-center">
+                        <button class="btn-red" onclick="removeFleetCarrier('${carrierName}')">Remove</button>
+                        </td></tr>`;
+                    });
+                }
+
+                // Footer: Total Required row
+                html += `<tr style="background-color: #f59e0b; border-top: 2px solid #d97706;">
+                <td style="font-weight: 600; color: #1a1f3a;">Total Required</td>`;
+                commodities.forEach(commodity => {
+                    html += `<td class="text-center" style="font-weight: 600; color: #1a1f3a;">${totalRequired[commodity]}t</td>`;
+                });
+                html += '<td class="text-center" style="color: #1a1f3a;"></td></tr>';
+
+                // Footer: Net Result row
+                html += `<tr style="background-color: #1e40af; border-top: 1px solid #0ea5e9;">
+                <td style="font-weight: 600; color: #f5e6a3;">Net Result</td>`;
+                commodities.forEach(commodity => {
+                    const netResult = totalAvailable[commodity] - totalRequired[commodity];
+                    const resultClass = netResult >= 0 ? 'text-green' : 'text-red';
+                    const sign = netResult >= 0 ? '+' : '';
+                    html += `<td class="text-center ${resultClass}" style="font-weight: 600;">${sign}${netResult}t</td>`;
+                });
+                html += '<td class="text-center" style="color: #f5e6a3;"></td></tr>';
+
+                html += '</tbody></table>';
+                carrierTable.innerHTML = html;
+            } else {
+                carrierTable.classList.add('hidden');
+                noCarriers.classList.remove('hidden');
+            }
+        }
+
+        function updateCommanders() {
+            const section = document.getElementById('commandersSection');
+            const table = document.getElementById('commandersTable');
+
+            if (Object.keys(commanders).length > 0) {
+                section.classList.remove('hidden');
+
+                let html = '<thead><tr><th>Commander</th><th class="text-center">Cargo Capacity (t)</th><th class="text-center">Active Missions</th></tr></thead><tbody>';
+
+                Object.keys(commanders).forEach(commanderName => {
+                    const activeMissions = missions[commanderName]?.length || 0;
+                    const expiredCount = expiredMissions[commanderName]?.length || 0;
+
+                    html += `<tr>
+                        <td>${commanderName}</td>
+                        <td class="text-center">
+                            <input type="number" value="${commanders[commanderName].cargoCapacity}" min="0"
+                                   onchange="updateCargoCapacity('${commanderName}', this.value)"
+                                   style="width: 80px; text-align: center; background: transparent; border: none; color: #f5e6a3;">
+                        </td>
+                        <td class="text-center">
+                            ${activeMissions}
+                            ${expiredCount > 0 ? `<span class="text-red" style="font-size: 0.75rem; margin-left: 0.5rem;">(${expiredCount} expired)</span>` : ''}
+                        </td>
+                    </tr>`;
+                });
+
+                html += '</tbody>';
+                table.innerHTML = html;
+            } else {
+                section.classList.add('hidden');
+            }
+        }
+
+        function updateCargoCapacity(commanderName, capacity) {
+            commanders[commanderName].cargoCapacity = parseInt(capacity) || 0;
+            updateUI();
+        }
+
+        function updateExpiredMissions() {
+            const section = document.getElementById('expiredSection');
+            const table = document.getElementById('expiredTable');
+
+            const hasExpired = Object.keys(expiredMissions).some(cmd => expiredMissions[cmd]?.length > 0);
+
+            if (hasExpired) {
+                section.classList.remove('hidden');
+
+                let html = '<thead><tr style="background-color: #dc2626;"><th>CMDR</th><th>Commodity</th><th class="text-right">Amount (t)</th><th>Mission ID</th><th>Faction</th><th>Expired</th></tr></thead><tbody>';
+
+                Object.keys(expiredMissions).forEach(commanderName => {
+                    expiredMissions[commanderName]?.forEach(mission => {
+                        html += `<tr>
+                            <td>${commanderName}</td>
+                            <td>${mission.commodity}</td>
+                            <td class="text-right font-mono">${mission.count}</td>
+                            <td>${mission.missionId}</td>
+                            <td>${mission.faction}</td>
+                            <td><span class="status-badge status-expired">${formatTimeRemaining(mission.expiry)}</span></td>
+                        </tr>`;
+                    });
+                });
+
+                html += '</tbody>';
+                table.innerHTML = html;
+            } else {
+                section.classList.add('hidden');
+            }
+        }
+
+        function updateSummary() {
+            const section = document.getElementById('summarySection');
+            const table = document.getElementById('summaryTable');
+
+            const summaryData = [];
+
+            Object.keys(missions).forEach(commanderName => {
+                const commanderMissions = missions[commanderName];
+
+                // Create a row for each individual mission instead of grouping by commodity
+                commanderMissions.forEach(mission => {
+                    summaryData.push({
+                        id: `${commanderName}-${mission.missionId}`,
+                        commander: commanderName,
+                        commodity: mission.commodity,
+                        amount: mission.count,
+                        timer: formatTimeRemaining(mission.expiry),
+                        mission: mission // Single mission instead of array
+                    });
                 });
             });
+
+            if (summaryData.length > 0) {
+                section.classList.remove('hidden');
+
+                let html = '<thead><tr><th style="width: 2rem;"></th><th>CMDR</th><th>Commodity</th><th class="text-right">Amount (t)</th><th>Timer</th></tr></thead><tbody>';
+
+                summaryData.forEach(row => {
+                    const isExpanded = expandedRows.has(row.id);
+                    const timerClass = row.timer.includes('Expired') ? 'status-expired' :
+                        row.timer.includes('h') && !row.timer.includes('d') ? 'status-urgent' : 'status-good';
+
+                    html += `<tr class="expandable-row" onclick="toggleRowExpansion('${row.id}')">
+                        <td class="text-center">${isExpanded ? '▼' : '▶'}</td>
+                        <td>${row.commander}</td>
+                        <td>${row.commodity}</td>
+                        <td class="text-right font-mono">${row.amount}</td>
+                        <td><span class="status-badge ${timerClass}">${row.timer}</span></td>
+                    </tr>`;
+
+                    if (isExpanded) {
+                        const mission = row.mission;
+                        html += `<tr><td colspan="5" class="expanded-content">
+                            <h4 style="font-weight: 500; margin-bottom: 0.5rem;">Mission Details:</h4>
+                            <div class="mission-card" style="max-width: 400px;">
+                                <div style="display: flex; justify-content: space-between; align-items: start;">
+                                    <div>
+                                        <p style="font-weight: 500;">Mission ID: ${mission.missionId}</p>
+                                        <p style="font-size: 0.875rem; color: rgba(245, 230, 163, 0.6);">Faction: ${mission.faction}</p>
+                                        <p style="font-size: 0.875rem;">Amount: ${mission.count}t</p>
+                                        <p style="font-size: 0.875rem;">Type: ${mission.type === 'Mission_Mining' ? 'Mining' : 'Industrial'}</p>
+                                    </div>
+                                    <div style="text-align: right;">
+                                        <p style="font-size: 0.875rem; font-weight: 500; color: #60a5fa;">
+                                            ${mission.reward?.toLocaleString()} Cr
+                                        </p>
+                                        <p style="font-size: 0.875rem; color: rgba(245, 230, 163, 0.6);">
+                                            ${formatTimeRemaining(mission.expiry)}
+                                        </p>
+                                    </div>
+                                </div>
+                            </div>
+                        </td></tr>`;
+                    }
+                });
+
+                html += '</tbody>';
+                table.innerHTML = html;
+            } else {
+                section.classList.add('hidden');
+            }
+        }
+
+        function updateRoutes() {
+            const section = document.getElementById('routeSection');
+            const content = document.getElementById('routeContent');
+
+            const tripGroups = generateRoutes();
+
+            if (tripGroups.length > 0) {
+                section.classList.remove('hidden');
+
+                let html = '';
+                tripGroups.forEach(tripGroup => {
+                    if (tripGroup.isPhaseHeader) {
+                        html += `<div class="trip-card">
+                        <div class="trip-header">PHASE ${tripGroup.phaseNumber}: ${tripGroup.commodity}</div>
+                        </div>`;
+                    } else {
+                        html += `<div class="trip-card">
+                        <div class="trip-header">TRIP #${tripGroup.tripNumber}</div>
+                        <table class="trip-table">
+                            <thead>
+                                <tr>
+                                    <th style="width: 3rem; text-align: center;">✓</th>
+                                    <th style="min-width: 8rem;">Action</th>`;
+
+                        tripGroup.commanders.forEach(commander => {
+                            html += `<th style="min-width: 12rem;">${commander}</th>`;
+                        });
+
+                        html += `</tr></thead><tbody>`;
+
+                        tripGroup.actions.forEach((actionRow, index) => {
+                            const progressKey = actionRow.id;
+                            const isChecked = routeProgress[progressKey];
+
+                            html += `<tr>
+                            <td class="text-center">
+                                <input type="checkbox" ${isChecked ? 'checked' : ''} 
+                                    onchange="toggleRouteProgress('${progressKey}')">
+                            </td>
+                            <td class="action-col">${actionRow.action}</td>`;
+
+                            tripGroup.commanders.forEach(commander => {
+                                const content = actionRow.commanders[commander];
+
+                                html += `<td>`;
+                                if (content) {
+                                    html += `<span class="${isChecked ? 'strikethrough' : ''}">${content}</span>`;
+                                }
+                                html += `</td>`;
+                            });
+
+                            html += '</tr>';
+                        });
+                        html += '</tbody></table></div>';
+                    }
+                });
+
+                content.innerHTML = html;
+            } else {
+                section.classList.add('hidden');
+            }
+        }
+
+        function updateEmptyState() {
+            const emptyState = document.getElementById('emptyState');
+            const hasData = Object.keys(commanders).length > 0;
+
+            if (hasData) {
+                emptyState.classList.add('hidden');
+            } else {
+                emptyState.classList.remove('hidden');
+            }
+        }
+    </script>
+</body>
+</html>
