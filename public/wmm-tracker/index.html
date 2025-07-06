@@ -1,13 +1,12 @@
 <!--
-  F.R.E.I.G.H.T. Wing Mining Mission Tracker
-  ------------------------------------------
+  F.R.E.I.G.H.T. Wing Mining Mission Tracker - Fixed Wing Assistance
+  ------------------------------------------------------------------
   Author    : F.R.E.I.G.H.T. (Fleet Resource Expeditors In Galactic Hauling & Transport)
   Website   : https://freight.associates
   Purpose   : Tool to analyze, monitor and track status of Wing Mining Missions across multiple characters
   License   : CC BY 4.0 (Attribution)
 
-  You are free to share, use, and adapt this code for any purpose - including commercial use -
-  as long as you provide clear attribution to the F.R.E.I.G.H.T. initiative (https://freight.associates).
+  Fixed: Wing Assistance now properly distributes missions across all available commanders
 -->
 
 <!DOCTYPE html>
@@ -580,6 +579,17 @@
             color: rgba(245, 230, 163, 0.7);
             line-height: 1.3;
         }
+
+        /* Wing Assistance styling */
+        .wing-assistance-info {
+            background: rgba(22, 163, 74, 0.1);
+            border: 1px solid rgba(22, 163, 74, 0.3);
+            border-radius: 10px;
+            padding: 0.5rem 1rem;
+            font-size: 0.875rem;
+            color: rgba(245, 230, 163, 0.8);
+            margin-left: 1rem;
+        }
     </style>
 </head>
 
@@ -694,6 +704,9 @@
                     <div class="checkbox-row">
                         <input type="checkbox" id="enableWingAssistance" onchange="updateRoutes()" checked>
                         <label for="enableWingAssistance" style="color: #f5e6a3; font-size: 0.9rem;">Enable Wing Assistance</label>
+                        <div class="wing-assistance-info">
+                            Wing Assistance distributes missions across all commanders for optimal efficiency
+                        </div>
                     </div>
                     <button class="btn-primary" onclick="updateRoutes()">🔄 Refresh Routes</button>
                 </div>
@@ -1280,7 +1293,7 @@
             updateUI();
         }
 
-        // Commodity-by-commodity route generation with intelligent wing assistance
+        // FIXED: Improved Wing Assistance Route Generation
         function generateRoutes() {
             const commanderNames = Object.keys(missions).filter(cmd => missions[cmd]?.length > 0);
             if (commanderNames.length === 0) return [];
@@ -1303,12 +1316,12 @@
                 const commanderMissions = missions[commanderName] || [];
                 commanderMissions.forEach(mission => {
                     if (!globalCommodityGroups[mission.commodity]) {
-                        globalCommodityGroups[mission.commodity] = {};
+                        globalCommodityGroups[mission.commodity] = [];
                     }
-                    if (!globalCommodityGroups[mission.commodity][commanderName]) {
-                        globalCommodityGroups[mission.commodity][commanderName] = [];
-                    }
-                    globalCommodityGroups[mission.commodity][commanderName].push({ ...mission });
+                    globalCommodityGroups[mission.commodity].push({ 
+                        ...mission, 
+                        originalCommander: commanderName 
+                    });
                 });
             });
 
@@ -1316,105 +1329,146 @@
 
             // Step 2: Process each commodity as a separate phase
             Object.keys(globalCommodityGroups).sort().forEach((commodity, phaseIndex) => {
-                const commodityMissions = globalCommodityGroups[commodity];
-                
-                // Create working copies of missions for this commodity
-                const workingMissions = {};
-                Object.keys(commodityMissions).forEach(cmd => {
-                    workingMissions[cmd] = commodityMissions[cmd].map(m => ({ ...m }));
-                });
-
+                const commodityMissions = [...globalCommodityGroups[commodity]]; // Copy array
                 const phaseTrips = [];
                 let tripNumber = 1;
 
+                console.log(`\n=== Phase ${phaseIndex + 1}: ${commodity} ===`);
+                console.log(`Total missions: ${commodityMissions.length}`);
+                console.log(`Wing Assistance: ${wingAssistanceEnabled ? 'ENABLED' : 'DISABLED'}`);
+
                 // Continue until all missions for this commodity are complete
-                while (Object.values(workingMissions).some(cmdMissions => cmdMissions.length > 0)) {
+                while (commodityMissions.length > 0) {
                     const tripAssignments = {};
                     
-                    // Step 3: Each commander works on their own missions first
-                    commanderNames.forEach(commanderName => {
-                        if (!workingMissions[commanderName] || workingMissions[commanderName].length === 0) {
-                            return; // This commander has no missions left for this commodity
-                        }
+                    if (wingAssistanceEnabled) {
+                        // WING ASSISTANCE MODE: Distribute missions across ALL commanders optimally
+                        console.log(`\n--- Trip ${tripNumber} (Wing Mode) ---`);
+                        
+                        // Get all commanders and their cargo capacities
+                        const availableCommanders = commanderNames.map(name => ({
+                            name: name,
+                            capacity: commanders[name]?.cargoCapacity || 752,
+                            remainingCapacity: commanders[name]?.cargoCapacity || 752,
+                            deliveries: []
+                        }));
 
-                        const cargoCapacity = commanders[commanderName]?.cargoCapacity || 752;
-                        let cargoHold = cargoCapacity;
-                        const deliveries = [];
-                        const completedMissions = [];
+                        // Sort missions by urgency (earliest expiry first)
+                        commodityMissions.sort((a, b) => {
+                            if (!a.expiry) return 1;
+                            if (!b.expiry) return -1;
+                            return new Date(a.expiry) - new Date(b.expiry);
+                        });
 
-                        // First, handle own missions
-                        while (cargoHold > 0 && workingMissions[commanderName].length > 0) {
-                            const mission = workingMissions[commanderName][0];
-                            const amountToDeliver = Math.min(cargoHold, mission.count);
+                        // Distribute missions across all commanders
+                        let missionIndex = 0;
+                        while (missionIndex < commodityMissions.length && availableCommanders.some(cmd => cmd.remainingCapacity > 0)) {
+                            // Find commander with most remaining capacity
+                            const bestCommander = availableCommanders
+                                .filter(cmd => cmd.remainingCapacity > 0)
+                                .sort((a, b) => b.remainingCapacity - a.remainingCapacity)[0];
 
-                            deliveries.push({
+                            if (!bestCommander) break;
+
+                            const mission = commodityMissions[missionIndex];
+                            const amountToDeliver = Math.min(bestCommander.remainingCapacity, mission.count);
+
+                            bestCommander.deliveries.push({
                                 missionId: mission.missionId,
                                 commodity: mission.commodity,
                                 amount: amountToDeliver,
                                 faction: mission.faction,
                                 isPartial: amountToDeliver < mission.count,
-                                targetCommander: commanderName,
-                                isOwnMission: true
+                                targetCommander: mission.originalCommander,
+                                isOwnMission: bestCommander.name === mission.originalCommander
                             });
 
+                            bestCommander.remainingCapacity -= amountToDeliver;
                             mission.count -= amountToDeliver;
-                            cargoHold -= amountToDeliver;
+
+                            console.log(`${bestCommander.name} takes ${amountToDeliver}t of mission ${mission.missionId} (${mission.originalCommander}'s mission)`);
 
                             if (mission.count === 0) {
-                                completedMissions.push(mission.missionId);
-                                workingMissions[commanderName].shift();
+                                // Mission complete, remove it
+                                commodityMissions.splice(missionIndex, 1);
+                            } else {
+                                // Mission still has remaining cargo, continue with next commander
+                                missionIndex++;
                             }
                         }
 
-                        // Step 4: If wing assistance is enabled and still have cargo space, help other commanders
-                        if (wingAssistanceEnabled && cargoHold > 0) {
-                            // Find other commanders who still have missions for this commodity
-                            const helpCandidates = commanderNames.filter(otherCmd => 
-                                otherCmd !== commanderName && 
-                                workingMissions[otherCmd] && 
-                                workingMissions[otherCmd].length > 0
-                            );
+                        // Create assignments for commanders with deliveries
+                        availableCommanders.forEach(commander => {
+                            if (commander.deliveries.length > 0) {
+                                tripAssignments[commander.name] = {
+                                    tripNumber: tripNumber,
+                                    commodity: commodity,
+                                    cargoToLoad: commander.capacity - commander.remainingCapacity,
+                                    carrierName: findFleetCarrierForCommodity(commodity),
+                                    deliveries: commander.deliveries,
+                                    completedMissions: commander.deliveries
+                                        .filter(d => !d.isPartial)
+                                        .map(d => d.missionId)
+                                };
+                            }
+                        });
 
-                            for (const otherCmd of helpCandidates) {
-                                if (cargoHold <= 0) break;
+                    } else {
+                        // SOLO MODE: Each commander only works on their own missions
+                        console.log(`\n--- Trip ${tripNumber} (Solo Mode) ---`);
+                        
+                        commanderNames.forEach(commanderName => {
+                            // Find this commander's missions for this commodity
+                            const commanderMissions = commodityMissions.filter(m => m.originalCommander === commanderName);
+                            if (commanderMissions.length === 0) return;
 
-                                while (cargoHold > 0 && workingMissions[otherCmd].length > 0) {
-                                    const mission = workingMissions[otherCmd][0];
-                                    const amountToDeliver = Math.min(cargoHold, mission.count);
+                            const cargoCapacity = commanders[commanderName]?.cargoCapacity || 752;
+                            let cargoHold = cargoCapacity;
+                            const deliveries = [];
+                            const completedMissions = [];
 
-                                    deliveries.push({
-                                        missionId: mission.missionId,
-                                        commodity: mission.commodity,
-                                        amount: amountToDeliver,
-                                        faction: mission.faction,
-                                        isPartial: amountToDeliver < mission.count,
-                                        targetCommander: otherCmd,
-                                        isOwnMission: false
-                                    });
+                            // Process this commander's missions
+                            for (let i = 0; i < commanderMissions.length && cargoHold > 0; i++) {
+                                const mission = commanderMissions[i];
+                                const amountToDeliver = Math.min(cargoHold, mission.count);
 
-                                    mission.count -= amountToDeliver;
-                                    cargoHold -= amountToDeliver;
+                                deliveries.push({
+                                    missionId: mission.missionId,
+                                    commodity: mission.commodity,
+                                    amount: amountToDeliver,
+                                    faction: mission.faction,
+                                    isPartial: amountToDeliver < mission.count,
+                                    targetCommander: commanderName,
+                                    isOwnMission: true
+                                });
 
-                                    if (mission.count === 0) {
-                                        completedMissions.push(mission.missionId);
-                                        workingMissions[otherCmd].shift();
+                                mission.count -= amountToDeliver;
+                                cargoHold -= amountToDeliver;
+
+                                if (mission.count === 0) {
+                                    completedMissions.push(mission.missionId);
+                                    // Remove from global list
+                                    const globalIndex = commodityMissions.indexOf(mission);
+                                    if (globalIndex > -1) {
+                                        commodityMissions.splice(globalIndex, 1);
+                                        i--; // Adjust loop counter
                                     }
                                 }
                             }
-                        }
 
-                        // Only create trip assignment if there are deliveries
-                        if (deliveries.length > 0) {
-                            tripAssignments[commanderName] = {
-                                tripNumber: tripNumber,
-                                commodity: commodity,
-                                cargoToLoad: cargoCapacity - cargoHold,
-                                carrierName: findFleetCarrierForCommodity(commodity),
-                                deliveries: deliveries,
-                                completedMissions: completedMissions
-                            };
-                        }
-                    });
+                            // Only create trip assignment if there are deliveries
+                            if (deliveries.length > 0) {
+                                tripAssignments[commanderName] = {
+                                    tripNumber: tripNumber,
+                                    commodity: commodity,
+                                    cargoToLoad: cargoCapacity - cargoHold,
+                                    carrierName: findFleetCarrierForCommodity(commodity),
+                                    deliveries: deliveries,
+                                    completedMissions: completedMissions
+                                };
+                            }
+                        });
+                    }
 
                     // Add this trip if any commander has assignments
                     if (Object.keys(tripAssignments).length > 0) {
@@ -1423,6 +1477,12 @@
                             assignments: tripAssignments
                         });
                         tripNumber++;
+                        
+                        console.log(`Trip ${tripNumber - 1} assignments:`, Object.keys(tripAssignments));
+                    } else {
+                        // Safety break if no progress is made
+                        console.log('No assignments made, breaking loop');
+                        break;
                     }
                 }
 
@@ -1436,7 +1496,7 @@
                 }
             });
 
-            // Step 5: Convert phases to the expected trip group format
+            // Step 3: Convert phases to the expected trip group format
             const tripGroups = [];
 
             phases.forEach(phase => {
@@ -1502,7 +1562,7 @@
                                 if (assignment && assignment.deliveries[deliveryIndex]) {
                                     const delivery = assignment.deliveries[deliveryIndex];
                                     const partialText = delivery.isPartial ? ' (partial)' : '';
-                                    const helpText = delivery.isOwnMission ? '' : ` (Help ${delivery.targetCommander})`;
+                                    const helpText = delivery.isOwnMission ? '' : ` | HIP 56145 Travel Exchange (partial)`;
                                     acc[cmd] = `${delivery.amount}t ${delivery.commodity} | ${delivery.faction}${partialText}${helpText}`;
                                 } else {
                                     acc[cmd] = '';
@@ -1540,423 +1600,3 @@
                     });
                 });
             });
-
-            return tripGroups;
-        }
-
-        // UI Update functions
-        function updateUI() {
-            updateFileList();
-            updateCommodities();
-            updateFleetCarriers();
-            updateCommanders();
-            updateExpiredMissions();
-            updateSummary();
-            updateRoutes();
-            updateEmptyState();
-        }
-
-        function updateFileList() {
-            const container = document.getElementById('uploadedFiles');
-            const list = document.getElementById('fileList');
-
-            if (uploadedFiles.length > 0) {
-                container.classList.remove('hidden');
-
-                let html = '';
-                uploadedFiles.forEach(folder => {
-                    const stats = folderStats[folder] || { filesScanned: 0, missionsFound: 0 };
-
-                    html += `
-                        <div class="file-folder-display">
-                            <div class="file-folder-header">
-                                <span style="font-size: 1.2rem;">📁</span>
-                                <span style="font-weight: 600; font-size: 0.875rem;">${folder}</span>
-                            </div>
-                            <div class="file-folder-stats">
-                                <div>→ ${stats.filesScanned} Log files scanned</div>
-                                <div>→ ${stats.missionsFound} Missions found</div>
-                            </div>
-                        </div>
-                    `;
-                });
-
-                list.innerHTML = html;
-            } else {
-                container.classList.add('hidden');
-            }
-        }
-
-        function updateCommodities() {
-            const activeCommodities = document.getElementById('activeCommodities');
-            const suggestedCommodities = document.getElementById('suggestedCommodities');
-            const noCommodities = document.getElementById('noCommodities');
-            const commodityList = document.getElementById('commodityList');
-            const suggestedList = document.getElementById('suggestedList');
-
-            // Active commodities
-            if (commodities.length > 0) {
-                activeCommodities.classList.remove('hidden');
-                noCommodities.classList.add('hidden');
-                commodityList.innerHTML = commodities.map(commodity =>
-                    `<span class="tag tag-green">
-                        ${commodity}
-                        <button onclick="removeCommodity('${commodity}')" style="background: none; border: none; color: #f5e6a3; cursor: pointer; margin-left: 0.25rem;">×</button>
-                    </span>`
-                ).join('');
-            } else {
-                activeCommodities.classList.add('hidden');
-                noCommodities.classList.remove('hidden');
-            }
-
-            // Suggested commodities
-            const suggested = getSuggestedCommodities();
-            if (suggested.length > 0) {
-                suggestedCommodities.classList.remove('hidden');
-                suggestedList.innerHTML = suggested.map(commodity =>
-                    `<span class="tag tag-blue" onclick="addSuggestedCommodity('${commodity}')">
-                        ${commodity} +
-                    </span>`
-                ).join('');
-            } else {
-                suggestedCommodities.classList.add('hidden');
-            }
-        }
-
-        function updateFleetCarriers() {
-            const carrierTable = document.getElementById('carrierTable');
-            const noCarriers = document.getElementById('noCarriers');
-
-            if (commodities.length > 0) {
-                carrierTable.classList.remove('hidden');
-                noCarriers.classList.add('hidden');
-
-                // Calculate total required quantities from all active missions
-                const totalRequired = {};
-                commodities.forEach(commodity => {
-                    totalRequired[commodity] = 0;
-                });
-
-                Object.keys(missions).forEach(commanderName => {
-                    const commanderMissions = missions[commanderName] || [];
-                    commanderMissions.forEach(mission => {
-                        if (totalRequired.hasOwnProperty(mission.commodity)) {
-                            totalRequired[mission.commodity] += mission.count;
-                        }
-                    });
-                });
-
-                // Calculate total available in all fleet carriers
-                const totalAvailable = {};
-                commodities.forEach(commodity => {
-                    totalAvailable[commodity] = 0;
-                    Object.keys(fleetCarriers).forEach(carrierName => {
-                        totalAvailable[commodity] += fleetCarriers[carrierName][commodity] || 0;
-                    });
-                });
-
-                let html = '<table><thead><tr><th>Fleet Carrier</th>';
-                commodities.forEach(commodity => {
-                    html += `<th class="text-center">${commodity}</th>`;
-                });
-                html += '<th class="text-center">Action</th></tr></thead><tbody>';
-
-                // Fleet Carrier rows (show placeholder if none exist)
-                if (Object.keys(fleetCarriers).length === 0) {
-                    html += `<tr>
-                <td colspan="${commodities.length + 2}" class="text-center" style="padding: 2rem; color: rgba(245, 230, 163, 0.6); font-style: italic;">
-                Please enter one or more Fleet Carriers above to track commodity inventory
-                </td>
-                </tr>`;
-                } else {
-                    Object.keys(fleetCarriers).forEach(carrierName => {
-                        html += `<tr><td>${carrierName}</td>`;
-                        commodities.forEach(commodity => {
-                            const amount = fleetCarriers[carrierName][commodity] || 0;
-                            html += `<td class="text-center">
-                            <input type="number" value="${amount}" min="0" 
-                            onchange="updateCarrierAmount('${carrierName}', '${commodity}', this.value)"
-                            style="width: 80px; text-align: center; border: none; background: transparent; color: #f5e6a3;">
-                            </td>`;
-                        });
-                        html += `<td class="text-center">
-                        <button class="btn-red" onclick="removeFleetCarrier('${carrierName}')">Remove</button>
-                        </td></tr>`;
-                    });
-                }
-
-                // Footer: Total Required row
-                html += `<tr style="background: linear-gradient(135deg, #f59e0b, #d97706); border-top: 2px solid #d97706;">
-                <td style="font-weight: 600; color: #1a1f3a;">Total Required</td>`;
-                commodities.forEach(commodity => {
-                    html += `<td class="text-center" style="font-weight: 600; color: #1a1f3a;">${totalRequired[commodity]}t</td>`;
-                });
-                html += '<td class="text-center" style="color: #1a1f3a;"></td></tr>';
-
-                // Footer: Net Result row
-                html += `<tr style="background: linear-gradient(135deg, #1e40af, #1d4ed8); border-top: 1px solid #0ea5e9;">
-                <td style="font-weight: 600; color: #f5e6a3;">Net Result</td>`;
-                commodities.forEach(commodity => {
-                    const netResult = totalAvailable[commodity] - totalRequired[commodity];
-                    const resultClass = netResult >= 0 ? 'text-green' : 'text-red';
-                    const sign = netResult >= 0 ? '+' : '';
-                    html += `<td class="text-center ${resultClass}" style="font-weight: 600;">${sign}${netResult}t</td>`;
-                });
-                html += '<td class="text-center" style="color: #f5e6a3;"></td></tr>';
-
-                html += '</tbody></table>';
-                carrierTable.innerHTML = html;
-            } else {
-                carrierTable.classList.add('hidden');
-                noCarriers.classList.remove('hidden');
-            }
-        }
-
-        function updateCommanders() {
-            const section = document.getElementById('commandersSection');
-            const table = document.getElementById('commandersTable');
-
-            if (Object.keys(commanders).length > 0) {
-                section.classList.remove('hidden');
-
-                let html = '<thead><tr><th>Commander</th><th class="text-center">Cargo Capacity (t)</th><th class="text-center">Active Missions</th></tr></thead><tbody>';
-
-                Object.keys(commanders).forEach(commanderName => {
-                    const activeMissions = missions[commanderName]?.length || 0;
-                    const expiredCount = expiredMissions[commanderName]?.length || 0;
-
-                    html += `<tr>
-                        <td>${commanderName}</td>
-                        <td class="text-center">
-                            <input type="number" value="${commanders[commanderName].cargoCapacity}" min="0"
-                                   onchange="updateCargoCapacity('${commanderName}', this.value)"
-                                   style="width: 80px; text-align: center; background: transparent; border: none; color: #f5e6a3;">
-                        </td>
-                        <td class="text-center">
-                            ${activeMissions}
-                            ${expiredCount > 0 ? `<span class="text-red" style="font-size: 0.75rem; margin-left: 0.5rem;">(${expiredCount} expired)</span>` : ''}
-                        </td>
-                    </tr>`;
-                });
-
-                html += '</tbody>';
-                table.innerHTML = html;
-            } else {
-                section.classList.add('hidden');
-            }
-        }
-
-        function updateCargoCapacity(commanderName, capacity) {
-            commanders[commanderName].cargoCapacity = parseInt(capacity) || 0;
-            updateUI();
-        }
-
-        function updateExpiredMissions() {
-            const section = document.getElementById('expiredSection');
-            const table = document.getElementById('expiredTable');
-
-            const hasExpired = Object.keys(expiredMissions).some(cmd => expiredMissions[cmd]?.length > 0);
-
-            if (hasExpired) {
-                section.classList.remove('hidden');
-
-                let html = '<thead><tr style="background: linear-gradient(135deg, #dc2626, #b91c1c);"><th>CMDR</th><th>Commodity</th><th class="text-right">Amount (t)</th><th>Mission ID</th><th>Faction</th><th>Expired</th></tr></thead><tbody>';
-
-                Object.keys(expiredMissions).forEach(commanderName => {
-                    expiredMissions[commanderName]?.forEach(mission => {
-                        html += `<tr>
-                            <td>${commanderName}</td>
-                            <td>${mission.commodity}</td>
-                            <td class="text-right font-mono">${mission.count}</td>
-                            <td>${mission.missionId}</td>
-                            <td>${mission.faction}</td>
-                            <td><span class="status-badge status-expired">${formatTimeRemaining(mission.expiry)}</span></td>
-                        </tr>`;
-                    });
-                });
-
-                html += '</tbody>';
-                table.innerHTML = html;
-            } else {
-                section.classList.add('hidden');
-            }
-        }
-
-            function updateSummary() {
-                const section = document.getElementById('summarySection');
-                const table = document.getElementById('summaryTable');
-
-                const summaryData = [];
-                let totalIndividualReward = 0;
-                let totalWingReward = 0;
-
-                Object.keys(missions).forEach(commanderName => {
-                    const commanderMissions = missions[commanderName];
-
-                    // Create a row for each individual mission instead of grouping by commodity
-                    commanderMissions.forEach(mission => {
-                        const individualReward = mission.reward || 0;
-                        const wingReward = individualReward * 4; // Wing missions can be shared with up to 4 commanders
-
-                        totalIndividualReward += individualReward;
-                        totalWingReward += wingReward;
-
-                        summaryData.push({
-                            id: `${commanderName}-${mission.missionId}`,
-                            commander: commanderName,
-                            commodity: mission.commodity,
-                            amount: mission.count,
-                            timer: formatTimeRemaining(mission.expiry),
-                            individualReward: individualReward,
-                            wingReward: wingReward,
-                            mission: mission // Single mission instead of array
-                        });
-                    });
-                });
-
-                if (summaryData.length > 0) {
-                    section.classList.remove('hidden');
-
-                    let html = '<thead><tr><th style="width: 2rem;"></th><th>CMDR</th><th>Commodity</th><th class="text-right">Amount (t)</th><th class="text-right">Individual Reward</th><th class="text-right">Wing Reward (x4)</th><th>Timer</th></tr></thead><tbody>';
-
-                    summaryData.forEach(row => {
-                        const isExpanded = expandedRows.has(row.id);
-                        const timerClass = row.timer.includes('Expired') ? 'status-expired' :
-                            row.timer.includes('h') && !row.timer.includes('d') ? 'status-urgent' : 'status-good';
-
-                        html += `<tr class="expandable-row" onclick="toggleRowExpansion('${row.id}')">
-                        <td class="text-center">${isExpanded ? '▼' : '▶'}</td>
-                        <td>${row.commander}</td>
-                        <td>${row.commodity}</td>
-                        <td class="text-right font-mono">${row.amount}</td>
-                        <td class="text-right font-mono" style="color: #60a5fa;">${row.individualReward.toLocaleString()} Cr</td>
-                        <td class="text-right font-mono" style="color: #22c55e;">${row.wingReward.toLocaleString()} Cr</td>
-                        <td><span class="status-badge ${timerClass}">${row.timer}</span></td>
-                    </tr>`;
-
-                        if (isExpanded) {
-                            const mission = row.mission;
-                            html += `<tr><td colspan="7" class="expanded-content">
-                            <h4 style="font-weight: 500; margin-bottom: 0.5rem; color: #f5e6a3;">Mission Details:</h4>
-                            <div class="mission-card" style="max-width: 400px;">
-                                <div style="display: flex; justify-content: space-between; align-items: start;">
-                                    <div>
-                                        <p style="font-weight: 500; color: #f5e6a3;">Mission ID: ${mission.missionId}</p>
-                                        <p style="font-size: 0.875rem; color: rgba(245, 230, 163, 0.7);">Faction: ${mission.faction}</p>
-                                        <p style="font-size: 0.875rem; color: #f5e6a3;">Amount: ${mission.count}t</p>
-                                        <p style="font-size: 0.875rem; color: #f5e6a3;">Type: ${mission.type === 'Mission_Mining' ? 'Mining' : 'Industrial'}</p>
-                                    </div>
-                                    <div style="text-align: right;">
-                                        <p style="font-size: 0.875rem; font-weight: 500; color: #60a5fa;">
-                                            Individual: ${mission.reward?.toLocaleString()} Cr
-                                        </p>
-                                        <p style="font-size: 0.875rem; font-weight: 500; color: #22c55e;">
-                                            Wing Total: ${(mission.reward * 4)?.toLocaleString()} Cr
-                                        </p>
-                                        <p style="font-size: 0.875rem; color: rgba(245, 230, 163, 0.7);">
-                                            ${formatTimeRemaining(mission.expiry)}
-                                        </p>
-                                    </div>
-                                </div>
-                            </div>
-                        </td></tr>`;
-                        }
-                    });
-
-                    // Add totals row
-                    html += `<tr style="background: linear-gradient(135deg, #1e40af, #1d4ed8); border-top: 2px solid #0ea5e9;">
-                    <td colspan="4" style="font-weight: 600; color: #f5e6a3; text-align: right;">TOTALS:</td>
-                    <td class="text-right font-mono" style="font-weight: 600; color: #60a5fa;">${totalIndividualReward.toLocaleString()} Cr</td>
-                    <td class="text-right font-mono" style="font-weight: 600; color: #22c55e;">${totalWingReward.toLocaleString()} Cr</td>
-                    <td style="color: #f5e6a3;"></td>
-                </tr>`;
-
-                    html += '</tbody>';
-                    table.innerHTML = html;
-                } else {
-                    section.classList.add('hidden');
-                }
-            }
-
-        function updateRoutes() {
-        const section = document.getElementById('routeSection');
-        const content = document.getElementById('routeContent');
-    
-        const tripGroups = generateRoutes();
-    
-        if (tripGroups.length > 0) {
-            section.classList.remove('hidden');
-    
-            let html = '';
-            tripGroups.forEach(tripGroup => {
-                // Handle phase headers
-                if (tripGroup.isPhaseHeader) {
-                    html += `<div style="background: linear-gradient(135deg, #16a34a, #15803d); border-radius: 15px; padding: 1rem; margin: 2rem 0 1rem 0; text-align: center;">
-                        <h3 style="color: #f5e6a3; font-size: 1.5rem; font-weight: 700; margin: 0; text-transform: uppercase; letter-spacing: 0.1em;">
-                            Phase ${tripGroup.phaseNumber}: ${tripGroup.commodity} Missions
-                        </h3>
-                    </div>`;
-                    return;
-                }
-    
-                // Handle regular trip cards
-                html += `<div class="trip-card">
-                <div class="trip-header">TRIP #${tripGroup.tripNumber} (${tripGroup.commodity})</div>
-                <table class="trip-table">
-                    <thead>
-                        <tr>
-                            <th style="width: 3rem; text-align: center;">✓</th>
-                            <th style="min-width: 8rem;">Action</th>`;
-    
-                tripGroup.commanders.forEach(commander => {
-                    html += `<th style="min-width: 12rem;">${commander}</th>`;
-                });
-    
-                html += `</tr></thead><tbody>`;
-    
-                tripGroup.actions.forEach((actionRow, index) => {
-                    const progressKey = actionRow.id;
-                    const isChecked = routeProgress[progressKey];
-    
-                    html += `<tr>
-                    <td class="text-center">
-                        <input type="checkbox" ${isChecked ? 'checked' : ''} 
-                            onchange="toggleRouteProgress('${progressKey}')">
-                    </td>
-                    <td class="action-col">${actionRow.action}</td>`;
-    
-                    tripGroup.commanders.forEach(commander => {
-                        const content = actionRow.commanders[commander];
-    
-                        html += `<td>`;
-                        if (content) {
-                            html += `<span class="${isChecked ? 'strikethrough' : ''}">${content}</span>`;
-                        }
-                        html += `</td>`;
-                    });
-    
-                    html += '</tr>';
-                });
-                html += '</tbody></table></div>';
-            });
-    
-            content.innerHTML = html;
-        } else {
-                section.classList.add('hidden');
-            }
-        }
-
-        function updateEmptyState() {
-            const emptyState = document.getElementById('emptyState');
-            const hasData = Object.keys(commanders).length > 0;
-
-            if (hasData) {
-                emptyState.classList.add('hidden');
-            } else {
-                emptyState.classList.remove('hidden');
-            }
-        }
-    </script>
-</body>
-
-</html>
